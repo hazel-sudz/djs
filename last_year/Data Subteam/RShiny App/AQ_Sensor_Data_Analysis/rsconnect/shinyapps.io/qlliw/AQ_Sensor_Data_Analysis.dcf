@@ -1,0 +1,12 @@
+name: AQ_Sensor_Data_Analysis
+title: AQ_Sensor_Data_Analysis
+username: qlliw
+account: qlliw
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 14415568
+bundleId: 10047062
+url: https://qlliw.shinyapps.io/AQ_Sensor_Data_Analysis/
+version: 1
+asMultiple: FALSE
+asStatic: FALSE

@@ -1,0 +1,670 @@
+---
+title: "ECAGP Analysis Pipeline"
+authors: Cherry Pham and Scott Hersey
+
+---
+
+# Overview
+
+This code gives an overview on: - Loading air quality data from QuantAQ
+instruments - Performing initial summary analysis - Loading meteorology
+data from public data - Combining air quality and meteorology data -
+Conducting exploratory analysis on dynamics of air pollutants related to
+time and meteorology
+
+
+
+# AIR QUALITY DATA LOADING    
+
+# Loading initial packages
+
+```{r setup, include=FALSE}
+# Check and install required packages if necessary
+packages <- c("openair", "openairmaps", "leaflet", "dplyr", "chron", "timeDate", "data.table")
+install.packages(packages[!sapply(packages, requireNamespace, quietly = TRUE)])
+
+# Load required packages for data manipulation and analysis
+invisible(sapply(packages, library, character.only = TRUE))
+
+# Set options
+knitr::opts_chunk$set(echo = FALSE, message = FALSE)
+```
+
+# Load Air Quality Data file.
+
+```{r}
+# Load data frame
+load("G:/My Drive/Air Partners/data/graphableData.RData")
+
+# Set site names
+mod_met <- mod_met %>% 
+  mutate(name = ifelse(sn.x == "MOD-PM-01395", "ECAGP Eastway Site", "ECAGP Clinton Site"))
+
+unique_sensors <- unique(mod_met$sn)
+
+```
+
+# Summary statistics
+
+```{r}
+# Looking briefly at summary statistics will give you a sense of the variables that you just loaded. This can also tip you off to things that might need attention. 
+# What do you notice in these summary statistics?
+
+summary(mod_met)
+
+```
+
+
+# Date formatting
+
+```{r}
+# Dates and times have a bunch of different possible formats. These formats can be the bane of your analysis existence. Thankfully the lubridate package (which we loaded above) makes things smoother. It even automatically detects daylight saving time!
+mod_met$timestamp_local <- mod_met$timestamp_local.x
+mod_met$date <- as.POSIXct(strptime(mod_met$timestamp_local, format = "%Y-%m-%d %H:%M:%S", tz = "America/New_York"))
+
+```
+
+# Time series
+
+```{r}
+# We'll spend a lot of time working with the openair package in our project and will get a more in-depth introduction in the next class. But we'll draw on one of its functions now.
+# As you look at this time series, what sticks out to you?
+# Where do you notice points that seem outside of what is reasonable?
+
+unique_sensors <- unique(mod_met$sn)
+
+for (sensor in unique_sensors) {
+title <- as.character(sensor)
+data_for_sensor <- mod_met %>% filter(sn == sensor)
+temp_plot = openair::timePlot(data_for_sensor, pollutant = c("pm1",  "pm25", "pm10"), y.relation = "free", main =title, key.header = "PM1 ug m-3")
+ png(paste("pm1_time_plot_", sensor, ".png", sep = "")) # start export
+  print(temp_plot) 
+  dev.off() # finish export
+}
+
+
+
+```
+# Time series pt (y limited) (WIP)
+
+```{r}
+library(openair)
+library(dplyr)
+library(gridExtra)
+
+unique_sensors <- unique(mod_met$sn)
+
+for (sensor in unique_sensors) {
+  title <- as.character(sensor)
+  data_for_sensor <- mod_met %>% filter(sn == sensor)
+  
+  # Create separate plots with pollutant-specific y-axis limits
+  p1 <- timePlot(data_for_sensor, pollutant = "pm1",
+                 ylim = c(0, 70),
+                 main = paste(title, "PM1"),
+                 key.header = "PM1 ug m-3")
+  
+  p2 <- timePlot(data_for_sensor, pollutant = "pm25",
+                 ylim = c(0, 150),
+                 main = paste(title, "PM2.5"),
+                 key.header = "PM2.5 ug m-3")
+  
+  p3 <- timePlot(data_for_sensor, pollutant = "pm10",
+                 ylim = c(0, 2500),
+                 main = paste(title, "PM10"),
+                 key.header = "PM10 ug m-3")
+  
+  # Combine the three plots vertically
+  combined_plot <- grid.arrange(p1, p2, p3, ncol = 1)
+  
+  png(paste("pm_time_plot_", sensor, ".png", sep = ""))
+  grid.draw(combined_plot)
+  dev.off()
+}
+```
+# Time series pt (y limited) (WIP)
+
+```{r}
+library(openair)
+library(dplyr)
+library(gridExtra)
+library(grid)
+
+unique_sensors <- unique(mod_met$sn)
+
+for (sensor in unique_sensors) {
+  title <- as.character(sensor)
+  data_for_sensor <- mod_met %>% filter(sn == sensor)
+  
+  # Create separate timePlot objects with pollutant-specific y-axis limits
+  p1 <- timePlot(data_for_sensor, pollutant = "pm1",
+                 ylim = c(0, 70),
+                 main = paste(title, "PM1"),
+                 key.header = "PM1 ug m-3")
+  
+  p2 <- timePlot(data_for_sensor, pollutant = "pm25",
+                 ylim = c(0, 150),
+                 main = paste(title, "PM2.5"),
+                 key.header = "PM2.5 ug m-3")
+  
+  p3 <- timePlot(data_for_sensor, pollutant = "pm10",
+                 ylim = c(0, 2500),
+                 main = paste(title, "PM10"),
+                 key.header = "PM10 ug m-3")
+  
+  # Create a unique filename and output the combined plot
+  png_filename <- paste("pm_time_plot_", sensor, ".png", sep = "")
+  png(png_filename, width = 800, height = 1200)
+  dev.off()
+}
+
+```
+# CLEANING STEPS
+
+## Define threshold values
+```{r}
+# There are a lot of reasons why particular values in pollutant concentration may be untrustworthy. Namely, when power cycles in a sensor with electrochemical cells, concentration values are biased high until electrical currents stabilize. We'll use evidence we see in the timePlot from above to set threshods above which we'll remove values.
+
+thresholds <- c(pm10 = 10000, 
+                pm25 = 1000,
+                pm1 = 500
+                # no = 30,
+                # no2 = 400,
+                # co = 3000,
+                # o3 = 200      
+                )
+
+
+
+```
+
+
+
+## Remove outliers
+```{r}
+
+# Filter out according to defined thresholds
+
+mod_met_filtered<-mod_met   # Create a new dataframe that will be filtered and preserve the original
+
+# Iterate through columns and apply thresholds
+
+for (pollutant in names(thresholds)) {
+  threshold <- thresholds[[pollutant]]
+ 
+  # Replace values above threshold with NA
+  mod_met_filtered[, pollutant][mod_met_filtered[, pollutant] > threshold] <- NA
+
+  # Replace values below zero with NA
+  mod_met_filtered[, pollutant][mod_met_filtered[, pollutant] < 0] <- NA
+}
+
+
+```
+#
+
+## Sanity check time series - did you do your cleaning job?
+```{r}
+#timePlot(mod_met_filtered, pollutant = "co")
+
+for (sensor in unique_sensors) {
+title <- as.character(sensor)
+data_for_sensor <- mod_met %>% filter(sn == sensor)
+temp_plot = openair::timePlot(data_for_sensor, pollutant = c("pm1",  "pm25", "pm10"), y.relation = "free", main =title, key.header = "PM1 ug m-3")
+ png(paste("pm1_time_plot_", sensor, ".png", sep = "")) # start export
+  print(temp_plot) 
+  dev.off() # finish export
+}
+```
+
+
+## Did you find any funky time periods that need to be removed from the data? If so, filter by Date range.
+```{r}
+# Filter the data to include only the desired time range
+start_date <- as.Date("2023-10-2") # Start date for the funky time period
+end_date <- as.Date("2023-10-25") # End date for the funky time period
+mod_met_filtered_time <- mod_met_filtered[mod_met_filtered$date <= start_date | mod_met_filtered$date >= end_date, ]
+```
+
+# EXPLORATORY DATA ANALYSIS
+
+# We can answer a number of questions with air quality data. Some examples include: What is the air quality like now? Where is the air quality bad (now/typically)? When was AQ bad? What time of day should I (not) go outside? Where is my pollution coming from? How many bad pollution days were there this year? What fraction of the time was AQ good, bad, or in the middle? We'll use the R package openair to explore answers to these questions with data.
+
+### Calendar Plots: When was air quality bad? How many bad days were there in the last year?
+```{r}
+# These can help identify specific dates or ranges of dates that had particularly high pollutant concentrations. You may want to look more closely at conspicuously elevated pollutant days.
+
+for (sensor in unique_sensors) {
+title <- as.character(sensor)
+data_for_sensor <- mod_met %>% filter(sn == sensor)
+temp_plot = openair::calendarPlot(data_for_sensor, pollutant = "pm1", main =title, key.header = "PM1 ug m-3")
+ png(paste("pm1_calendar_plot_", sensor, ".png", sep = "")) # start export
+  print(temp_plot) 
+  dev.off() # finish export
+}
+
+for (sensor in unique_sensors) {
+title <- as.character(sensor)
+data_for_sensor <- mod_met %>% filter(sn == sensor)
+temp_plot = openair::calendarPlot(data_for_sensor, pollutant = "pm25", main =title, key.header = "PM25 ug m-3")
+ png(paste("pm25_calendar_plot_", sensor, ".png", sep = "")) # start export
+  print(temp_plot) 
+  dev.off() # finish export
+}
+
+for (sensor in unique_sensors) {
+title <- as.character(sensor)
+data_for_sensor <- mod_met %>% filter(sn == sensor)
+temp_plot = openair::calendarPlot(data_for_sensor, pollutant = "pm10", main =title, key.header = "PM10 ug m-3")
+ png(paste("pm10_calendar_plot_", sensor, ".png", sep = "")) # start export
+  print(temp_plot) 
+  dev.off() # finish export
+}
+
+# calendarPlot(mod_met_filtered, pollutant = "pm1")
+# calendarPlot(mod_met_filtered, pollutant = "pm25")
+# calendarPlot(mod_met_filtered, pollutant = "pm10")
+# calendarPlot(mod_met_filtered, pollutant = "pm10", limits = c(0,60), annotate='value')
+# 
+# 
+# calendarPlot(mod_met_filtered, pollutant = "pm10", annotate = "value", limits = c(0,80),
+# lim =50, cols = "Purples", col.lim = c("black", "orange"), layout = c(4, 3))
+
+
+# Explore for 10 min - different pollutants; different limits; thresholds
+
+```
+
+
+
+## When PM1 was bad, what else was bad?
+
+### Explore some scatterplots
+```{r}
+# install.packages("hexbin")
+# scatterPlot(mod_met_filtered, x = "pm1", y = "pm25")
+# scatterPlot(mod_met_filtered, x = "pm1", y = "pm25", method = "density", col = "jet")
+
+
+for (sensor in unique_sensors) {
+title <- as.character(sensor)
+data_for_sensor <- mod_met %>% filter(sn == sensor)
+temp_plot = openair::scatterPlot(data_for_sensor, x = "pm1", y = "pm25", z = "pm10", avg.time='hour', method = "hexbin", type = c("season", "weekend"))
+ #png(paste("pm10_calendar_plot_", sensor, ".png", sep = "")) # start export
+  print(temp_plot) 
+  #dev.off() # finish export
+}
+
+scatterPlot(mod_met_filtered, x = "pm1", y = "pm25", z = "pm10", avg.time='hour', method = "hexbin", linear = TRUE, smooth = FALSE, type = c("season", "weekend"))
+
+```
+
+### Explore some scatterplots Pt 2 (pm 10 vs pm 1)
+```{r}
+
+for (sensor in unique_sensors) {
+title <- as.character(sensor)
+data_for_sensor <- mod_met %>% filter(sn == sensor)
+temp_plot = openair::scatterPlot(data_for_sensor, x = "pm1", y = "pm25", z = "pm10", avg.time='hour', method = "hexbin", type = c("season", "weekend"))
+ png(paste("pm10_calendar_plot_", sensor, ".png", sep = "")) # start export
+  print(temp_plot) 
+  dev.off() # finish export
+}
+
+scatterPlot(mod_met_filtered, x = "pm1", y = "pm25", z = "pm10", avg.time='hour', method = "hexbin", linear = TRUE, smooth = FALSE, type = c("season", "weekend"))
+
+```
+
+## Diurnal Profiles: When is air quality (typically) bad? When is it typically (not) safe to go outside?
+```{r}
+# Diurnals: First look at a "typical day" for different pollutants
+# Read openair manual to find different ways to use this function. Things that may be helpful: selectByDate; type (season, etc); normalise; subset
+
+
+for (sensor in unique_sensors) {
+title <- as.character(sensor)
+data_for_sensor <- mod_met_filtered %>% filter(sn == sensor)
+temp_plot = openair::timeVariation(data_for_sensor, pollutant = c("pm1", "pm25", "pm10"), local.tz= "America/New_York", normalise = TRUE)
+}
+
+for (sensor in unique_sensors) {
+title <- as.character(sensor)
+data_for_sensor <- mod_met_filtered %>% filter(sn == sensor)
+myOutput = openair::timeVariation(data_for_sensor, pollutant = c("pm1", "pm25", "pm10"), local.tz= "America/New_York", normalise = TRUE, type = "season")
+plot(myOutput, subset = "hour")
+}
+
+
+for (sensor in unique_sensors) {
+title <- as.character(sensor)
+data_for_sensor <- mod_met_filtered %>% filter(sn == sensor)
+myOutput = openair::timeVariation(data_for_sensor, pollutant = c("pm1", "pm25", "pm10"), local.tz= "America/New_York", type = "season")
+plot(myOutput, subset = "hour")
+}
+#timeVariation(selectByDate(mod_met_filtered, month = c(1:5, 9:12)), pollutant = c('pm1', 'pm25', 'pm10'))
+ 
+ # myOutput <- timeVariation(mod_met_filtered, pollutant = "pm1", statistic = "median", local.tz= "America/New_York", col = "firebrick", type = "season")#, subset = "hour") 
+ # plot(myOutput, subset = "hour")
+
+```
+
+## Diurnal Profiles: When is air quality (typically) bad? When is it typically (not) safe to go outside?
+```{r}
+# Diurnals: First look at a "typical day" for different pollutants
+# Read openair manual to find different ways to use this function. Things that may be helpful: selectByDate; type (season, etc); normalise; subset
+
+
+for (sensor in unique_sensors) {
+title <- as.character(sensor)
+data_for_sensor <- mod_met_filtered %>% filter(sn == sensor)
+temp_plot = openair::timeVariation(data_for_sensor, pollutant = c("pm1", "pm25"), local.tz= "America/New_York", normalise = TRUE)
+}
+
+for (sensor in unique_sensors) {
+title <- as.character(sensor)
+data_for_sensor <- mod_met_filtered %>% filter(sn == sensor)
+myOutput = openair::timeVariation(data_for_sensor, pollutant = c("pm1", "pm25"), local.tz= "America/New_York", normalise = TRUE, type = "season")
+plot(myOutput, subset = "hour")
+}
+
+
+for (sensor in unique_sensors) {
+title <- as.character(sensor)
+data_for_sensor <- mod_met_filtered %>% filter(sn == sensor)
+myOutput = openair::timeVariation(data_for_sensor, pollutant = c("pm1", "pm25"), local.tz= "America/New_York", type = "season")
+plot(myOutput, subset = "hour")
+}
+#timeVariation(selectByDate(mod_met_filtered, month = c(1:5, 9:12)), pollutant = c('pm1', 'pm25', 'pm10'))
+ 
+ # myOutput <- timeVariation(mod_met_filtered, pollutant = "pm1", statistic = "median", local.tz= "America/New_York", col = "firebrick", type = "season")#, subset = "hour") 
+ # plot(myOutput, subset = "hour")
+
+```
+### TrendLevel - when was air quality typically bad?
+```{r}
+trendLevel(mod_met_filtered, x = "month", y = "hour", pollutant = "pm10", cols = "increment")
+
+
+```
+
+
+
+## Directional analysis of pollutants: Where is pollution bad? And where is pollution coming from?
+
+### Create polar plots (and other things in that family)
+```{r}
+# this group of functions allows you to explore the relationship between wind speed, wind direction, and pollutant concentrations. They all give slightly different flavors of the relationship between pollutants and meteorology, so explore and see what stories emerge. 
+
+# There are a bunch of different things you can define here - type (seasonal, etc), statistic (median, mean, max, standard deviation, etc), color scale limits, icon size, figure transparency, etc. In particular, the type and statistic inputs give you *very* different pictures of what's happening in an environment.
+
+#polarPlot(mod_met_filtered, pollutant = "pm1", type="season")
+#polarPlot(mod_met_filtered, pollutant = "pm10", type = "season", statistic = "weighted.mean")
+#polarPlot(mod_met_filtered, pollutant = "no", limits = c(0,5), type = "season")
+#polarFreq(mod_met_filtered, pollutant = "pm10")
+#pollutionRose(mod_met_filtered, pollutant = "pm10")
+
+
+
+for (sensor in unique_sensors) {
+title <- as.character(sensor)
+data_for_sensor <- mod_met_filtered %>% filter(sn == sensor)
+temp_plot = openair::polarAnnulus(mod_met_filtered, pollutant = "pm10")
+}
+
+
+
+for (sensor in unique_sensors) {
+title <- as.character(sensor)
+data_for_sensor <- mod_met_filtered %>% filter(sn == sensor)
+temp_plot = openair::polarCluster(mod_met_filtered, pollutant = "pm10", n.clusters = 4)
+}
+
+# Explore for 15 min
+
+```
+
+
+
+### Create polar plots by hourly basis pm 2.5
+```{r}
+unique_sensors <- unique(mod_met_filtered$sn)
+
+for (sensor in unique_sensors) {
+  title <- as.character(sensor)
+  data_for_sensor <- mod_met_filtered %>% filter(sn == sensor)
+  temp_plot <- openair::polarPlot(data_for_sensor,
+                                  pollutant = "pm25",
+                                  type = "hour",
+                                  main = title)
+}
+
+
+```
+### Create polar plots by hourly basis pm 10
+```{r}
+unique_sensors <- unique(mod_met_filtered$sn)
+
+for (sensor in unique_sensors) {
+  title <- as.character(sensor)
+  data_for_sensor <- mod_met_filtered %>% filter(sn == sensor)
+  temp_plot <- openair::polarPlot(data_for_sensor,
+                                  pollutant = "pm10",
+                                  type = "hour",
+                                  main = title)
+}
+
+
+```
+
+### Create polar plots (and other things in that family)
+```{r}
+
+for (sensor in unique_sensors) {
+title <- as.character(sensor)
+data_for_sensor <- mod_met_filtered %>% filter(sn == sensor)
+temp_plot = openair::polarAnnulus(mod_met_filtered, pollutant = "pm25")
+}
+
+```
+### Create Polar map plots
+```{r}
+#polarMap is an extension of polarPlot that places a polarPlot onto a map as an overlay. polarPlot is in a family of plots that include pollutionRose, polarAnnulus, polarFreq, percentileRose, and others that give slightly different visualizations of the same combined pollutant/met data. You should play with some of these too.
+
+# There are a bunch of different things you can define here - type (seasonal, etc), statistic (median, mean, max, standard deviation, etc), color scale limits, icon size, figure transparency, etc. In particular, the type and statistic inputs give you *very* different pictures of what's happening in an environment.
+
+polarMap(mod_met_filtered,
+         pollutant = "pm1", 
+         key.position = "bottom",
+         key.header = "PM1 (ug m-3)", 
+         key.footer = NULL, 
+         x = "ws",
+         latitude = "lat",
+         longitude = "lon", 
+         provider = "OpenStreetMap",
+         #limits = c(0, 15),
+         cols = "jet",
+         alpha = 0.8,
+         key = TRUE,
+         iconWidth = 200,
+         iconHeight = 200,
+         fig.width = 4,
+         fig.height = 4
+         )
+
+
+polarMap(mod_met_filtered,
+         pollutant = "pm25", 
+         key.position = "bottom",
+         key.header = "PM25 (ug m-3)", 
+         key.footer = NULL, 
+         x = "ws",
+         latitude = "lat",
+         longitude = "lon", 
+         provider = "OpenStreetMap",
+  #       limits = c(0, 4),
+         cols = "jet",
+         alpha = 0.8,
+         key = TRUE,
+         iconWidth = 200,
+         iconHeight = 200,
+         fig.width = 4,
+         fig.height = 4
+         )
+
+
+polarMap(mod_met_filtered,
+         pollutant = "pm10", 
+         key.position = "bottom",
+         key.header = "PM10 (ug m-3)", 
+         x = "ws",
+         latitude = "lat",
+         longitude = "lon", 
+         provider = "OpenStreetMap",
+       #  limits = c(0, 4),
+         cols = "jet",
+         key = TRUE,
+         )
+
+
+
+annulusMap(mod_met_filtered,
+         pollutant = "pm1", 
+         key.position = "bottom",
+         key.header = "PM1 (ug m-3)", 
+         period="hour",
+         latitude = "lat",
+         longitude = "lon", 
+         provider = "OpenStreetMap",
+       #  limits = c(0, 4),
+         cols = "jet",
+         key = TRUE,
+         )
+
+annulusMap(mod_met_filtered,
+         pollutant = "pm25", 
+         key.position = "bottom",
+         key.header = "PM25 (ug m-3)", 
+         period="hour",
+         latitude = "lat",
+         longitude = "lon", 
+         provider = "OpenStreetMap",
+       #  limits = c(0, 4),
+         cols = "jet",
+         key = TRUE,
+         )
+
+annulusMap(mod_met_filtered,
+         pollutant = "pm10", 
+         key.position = "bottom",
+         key.header = "PM10 (ug m-3)", 
+         period="hour",
+         latitude = "lat",
+         longitude = "lon", 
+         provider = "OpenStreetMap",
+       #  limits = c(0, 4),
+         cols = "jet",
+         key = TRUE,
+         )
+
+freqMap(mod_met_filtered,
+         pollutant = "pm1", 
+         key.position = "bottom",
+         key.header = "PM1 (ug m-3)", 
+         period="hour",
+         latitude = "lat",
+         longitude = "lon", 
+         provider = "OpenStreetMap",
+       #  limits = c(0, 4),
+         cols = "jet",
+         key = TRUE,
+         )
+
+percentileMap(mod_met_filtered,
+         pollutant = "pm25", 
+         key.position = "bottom",
+         key.header = "PM25 (ug m-3)", 
+         period="hour",
+         latitude = "lat",
+         longitude = "lon", 
+         provider = "OpenStreetMap",
+       #  limits = c(0, 4),
+         cols = "jet",
+         key = TRUE,
+         )
+
+percentileMap(mod_met_filtered,
+         pollutant = "pm10", 
+         key.position = "bottom",
+         key.header = "PM10 (ug m-3)", 
+         period="hour",
+         latitude = "lat",
+         longitude = "lon", 
+         provider = "OpenStreetMap",
+       #  limits = c(0, 4),
+         cols = "jet",
+         key = TRUE,
+         )
+
+# Explore for 15 min
+
+```
+
+### Polar maps
+```{r}
+# Save PM1 polar map
+png("polarMap_pm1.png", width = 4, height = 4, units = "in", res = 300)
+polarMap(mod_met_filtered,
+         pollutant = "pm1", 
+         key.position = "bottom",
+         key.header = "PM1 (ug m-3)", 
+         key.footer = NULL, 
+         x = "ws",
+         latitude = "lat",
+         longitude = "lon", 
+         provider = "OpenStreetMap",
+         cols = "jet",
+         alpha = 0.8,
+         key = TRUE,
+         iconWidth = 200,
+         iconHeight = 200,
+         fig.width = 4,
+         fig.height = 4)
+dev.off()
+
+# Save PM25 polar map
+png("polarMap_pm25.png", width = 4, height = 4, units = "in", res = 300)
+polarMap(mod_met_filtered,
+         pollutant = "pm25", 
+         key.position = "bottom",
+         key.header = "PM25 (ug m-3)", 
+         key.footer = NULL, 
+         x = "ws",
+         latitude = "lat",
+         longitude = "lon", 
+         provider = "OpenStreetMap",
+         cols = "jet",
+         alpha = 0.8,
+         key = TRUE,
+         iconWidth = 200,
+         iconHeight = 200,
+         fig.width = 4,
+         fig.height = 4)
+dev.off()
+
+# Save PM10 polar map
+png("polarMap_pm10.png", width = 4, height = 4, units = "in", res = 300)
+polarMap(mod_met_filtered,
+         pollutant = "pm10", 
+         key.position = "bottom",
+         key.header = "PM10 (ug m-3)", 
+         x = "ws",
+         latitude = "lat",
+         longitude = "lon", 
+         provider = "OpenStreetMap",
+         cols = "jet",
+         key = TRUE)
+dev.off()
+
+
+```
+
