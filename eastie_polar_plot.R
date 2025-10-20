@@ -154,6 +154,132 @@ if(length(available_ufp_cols) > 0) {
       cat("Error creating jet color polar plot:", e$message, "\n")
     })
     
+    # Daily polar plots - aggregate by day
+    cat("Creating daily polar plots...\n")
+    
+    # Add date column for daily aggregation
+    valid_data$date <- as.Date(valid_data$timestamp_local.x)
+    unique_dates <- unique(valid_data$date)
+    cat("Number of unique days:", length(unique_dates), "\n")
+    cat("Date range:", min(unique_dates), "to", max(unique_dates), "\n")
+    
+    # Remove extreme outliers for better visualization
+    ufp_values <- valid_data[[ufp_col]]
+    ufp_quantiles <- quantile(ufp_values, probs = c(0.01, 0.99), na.rm = TRUE)
+    cat("UFP concentration 1st and 99th percentiles:", ufp_quantiles, "\n")
+    
+    # Filter out extreme outliers (keep 1st to 99th percentile)
+    valid_data_clean <- valid_data[ufp_values >= ufp_quantiles[1] & ufp_values <= ufp_quantiles[2], ]
+    cat("Observations after outlier removal:", nrow(valid_data_clean), "out of", nrow(valid_data), "\n")
+    
+    # Debug: Check how many observations remain for each day after outlier removal
+    cat("\nDaily observation counts after outlier removal:\n")
+    for(i in 1:length(unique_dates)) {
+      current_date <- unique_dates[i]
+      day_data_original <- valid_data[valid_data$date == current_date, ]
+      day_count_clean <- sum(valid_data_clean$date == current_date, na.rm = TRUE)
+      day_ufp_range <- range(day_data_original[[ufp_col]], na.rm = TRUE)
+      cat(as.character(current_date), ":", day_count_clean, "observations (original:", nrow(day_data_original), 
+          ", UFP range:", round(day_ufp_range[1]), "-", round(day_ufp_range[2]), ")\n")
+    }
+    
+    # Debug: Check the data structure for daily plots
+    cat("\nDebug information for daily plots:\n")
+    cat("Wind direction column:", wd_col, "\n")
+    cat("Wind speed column:", ws_col, "\n")
+    cat("UFP concentration column:", ufp_col, "\n")
+    
+    # Check a sample of the data
+    sample_data <- valid_data[1:5, c(wd_col, ws_col, ufp_col)]
+    cat("Sample data (first 5 rows):\n")
+    print(sample_data)
+    
+    # Create polar plot for each day using cleaned data
+    for(i in 1:length(unique_dates)) {
+      current_date <- unique_dates[i]
+      day_data <- valid_data_clean[valid_data_clean$date == current_date, ]
+      
+      cat("\nProcessing", as.character(current_date), "-", nrow(day_data), "observations\n")
+      
+      if(nrow(day_data) >= 50) {  # Need sufficient data for meaningful polar plot
+        # Check for wind direction variation (avoid constant wind direction)
+        wd_range <- range(day_data[[wd_col]], na.rm = TRUE)
+        wd_variation <- wd_range[2] - wd_range[1]
+        
+        cat("Wind direction range:", wd_range, "(variation:", wd_variation, "degrees)\n")
+        cat("Wind speed range:", range(day_data[[ws_col]], na.rm = TRUE), "\n")
+        cat("UFP concentration range:", range(day_data[[ufp_col]], na.rm = TRUE), "\n")
+        
+        # Skip days with insufficient wind direction variation
+        if(wd_variation < 30) {
+          cat("Skipping", as.character(current_date), "- insufficient wind direction variation (", wd_variation, "degrees)\n")
+          next
+        }
+        
+        # Check for valid wind data in this day
+        valid_wd_day <- !is.na(day_data[[wd_col]]) & day_data[[wd_col]] >= 0 & day_data[[wd_col]] <= 360
+        valid_ws_day <- !is.na(day_data[[ws_col]]) & day_data[[ws_col]] >= 0
+        valid_ufp_day <- !is.na(day_data[[ufp_col]]) & day_data[[ufp_col]] > 0
+        
+        cat("Valid wind direction:", sum(valid_wd_day), "\n")
+        cat("Valid wind speed:", sum(valid_ws_day), "\n")
+        cat("Valid UFP:", sum(valid_ufp_day), "\n")
+        
+        # Create clean day data
+        clean_day_data <- day_data[valid_wd_day & valid_ws_day & valid_ufp_day, ]
+        cat("Clean observations for this day:", nrow(clean_day_data), "\n")
+        
+        if(nrow(clean_day_data) >= 50) {
+          # Use consistent format for all days (scatter plot + polar frequency plot)
+          unique_wd <- length(unique(clean_day_data[[wd_col]]))
+          cat("Unique wind directions:", unique_wd, "\n")
+          cat("Creating consistent plots for", as.character(current_date), "...\n")
+          
+          # Create scatter plot for all days
+          tryCatch({
+            scatter_plot <- scatterPlot(clean_day_data, 
+                                       x = wd_col, 
+                                       y = ufp_col,
+                                       z = ws_col,
+                                       main = paste("Daily Scatter Plot:", as.character(current_date), "- Wind Direction vs UFP"),
+                                       xlab = "Wind Direction (degrees)",
+                                       ylab = "UFP Concentration")
+            print(scatter_plot)
+          }, error = function(e) {
+            cat("Error creating scatter plot:", e$message, "\n")
+          })
+          
+          # Create polar frequency plot for all days
+          tryCatch({
+            freq_plot <- polarFreq(clean_day_data, 
+                                  pollutant = ufp_col,
+                                  main = paste("Daily Polar Frequency:", as.character(current_date), "- UFP by Wind Direction"))
+            print(freq_plot)
+          }, error = function(e) {
+            cat("Error creating polar frequency plot:", e$message, "\n")
+          })
+          
+        } else {
+          cat("Skipping", as.character(current_date), "- insufficient clean data (", nrow(clean_day_data), "observations)\n")
+        }
+      } else {
+        cat("Skipping", as.character(current_date), "- insufficient data (", nrow(day_data), "observations)\n")
+      }
+    }
+    
+    # Create a summary polar plot showing all days combined with day as type
+    cat("Creating summary polar plot by day...\n")
+    tryCatch({
+      summary_polar <- polarPlot(valid_data_clean, 
+                                pollutant = ufp_col,
+                                type = "date",
+                                k = 50,
+                                main = "Summary Polar Plot: UFP Concentrations by Day")
+      print(summary_polar)
+    }, error = function(e) {
+      cat("Error creating summary polar plot by day:", e$message, "\n")
+    })
+    
   } else {
     cat("Warning: No wind direction/speed columns found.\n")
     cat("Available columns:", paste(colnames(eastie_data), collapse = ", "), "\n")
