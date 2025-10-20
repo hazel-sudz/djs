@@ -2,9 +2,6 @@ library(shiny)
 library(ggplot2)
 library(DT)
 
-# Load the data
-data <- readRDS("Eastie_UFP.rds")
-
 # Define UI
 ui <- fluidPage(
   titlePanel("Eastie UFP Data Explorer"),
@@ -21,23 +18,23 @@ ui <- fluidPage(
       conditionalPanel(
         condition = "input.plotType == 'Histogram' || input.plotType == 'Bar Plot'",
         selectInput("var1", "Select Variable:",
-                    choices = colnames(data))
+                    choices = NULL)
       ),
       
       conditionalPanel(
         condition = "input.plotType == 'Scatter Plot'",
         selectInput("varX", "X Variable:",
-                    choices = colnames(data)[sapply(data, is.numeric)]),
+                    choices = NULL),
         selectInput("varY", "Y Variable:",
-                    choices = colnames(data)[sapply(data, is.numeric)])
+                    choices = NULL)
       ),
       
       conditionalPanel(
         condition = "input.plotType == 'Box Plot'",
         selectInput("varBox", "Variable:",
-                    choices = colnames(data)[sapply(data, is.numeric)]),
+                    choices = NULL),
         selectInput("groupVar", "Group By (optional):",
-                    choices = c("None", colnames(data)[sapply(data, function(x) is.factor(x) || is.character(x))]))
+                    choices = NULL)
       ),
       
       h3("Data Table"),
