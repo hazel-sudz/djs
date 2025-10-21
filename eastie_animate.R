@@ -6,6 +6,7 @@ library(ggplot2)
 library(gganimate)
 library(viridis)
 library(scales)
+library(ggnewscale)
 
 # Load the Eastie_UFP.rds data
 cat("Loading Eastie_UFP.rds data...\n")
@@ -76,15 +77,15 @@ print(sensor_coords[, c("sensor", "x", "y")])
 # Prepare data for animation
 cat("\nPreparing data for animation...\n")
 
-# Create a combined dataset with all sensors
+# Create a combined dataset with all sensors (including wind data)
 animation_data <- rbind(
-  sensor_00007 %>% select(timestamp, cpc_particle_number_conc_corr.x, sn.x) %>% 
+  sensor_00007 %>% select(timestamp, cpc_particle_number_conc_corr.x, sn.x, met.wx_u, met.wx_v, met.wx_ws, met.wx_wd) %>% 
     filter(!is.na(cpc_particle_number_conc_corr.x)) %>%
     mutate(sensor = "MOD-UFP-00007"),
-  sensor_00008 %>% select(timestamp, cpc_particle_number_conc_corr.x, sn.x) %>% 
+  sensor_00008 %>% select(timestamp, cpc_particle_number_conc_corr.x, sn.x, met.wx_u, met.wx_v, met.wx_ws, met.wx_wd) %>% 
     filter(!is.na(cpc_particle_number_conc_corr.x)) %>%
     mutate(sensor = "MOD-UFP-00008"),
-  sensor_00009 %>% select(timestamp, cpc_particle_number_conc_corr.x, sn.x) %>% 
+  sensor_00009 %>% select(timestamp, cpc_particle_number_conc_corr.x, sn.x, met.wx_u, met.wx_v, met.wx_ws, met.wx_wd) %>% 
     filter(!is.na(cpc_particle_number_conc_corr.x)) %>%
     mutate(sensor = "MOD-UFP-00009")
 )
@@ -95,13 +96,17 @@ animation_data <- merge(animation_data, sensor_coords[, c("sensor", "x", "y")], 
 # Create time groups for animation (every 30 minutes)
 animation_data$time_group <- floor_date(animation_data$timestamp, "30 minutes")
 
-# Calculate pollution statistics for each time group and sensor
+# Calculate pollution and wind statistics for each time group and sensor
 animation_summary <- animation_data %>%
   group_by(time_group, sensor, x, y) %>%
   summarise(
     pollution_mean = mean(cpc_particle_number_conc_corr.x, na.rm = TRUE),
     pollution_max = max(cpc_particle_number_conc_corr.x, na.rm = TRUE),
     pollution_min = min(cpc_particle_number_conc_corr.x, na.rm = TRUE),
+    wind_u = mean(met.wx_u, na.rm = TRUE),
+    wind_v = mean(met.wx_v, na.rm = TRUE),
+    wind_speed = mean(met.wx_ws, na.rm = TRUE),
+    wind_direction = mean(met.wx_wd, na.rm = TRUE),
     n_obs = n(),
     .groups = "drop"
   ) %>%
@@ -126,8 +131,8 @@ grid_points <- expand.grid(x = grid_x, y = grid_y)
 
 cat("Grid created with", nrow(grid_points), "interpolation points\n")
 
-# Function to interpolate pollution using inverse distance weighting
-interpolate_pollution <- function(grid_point, sensor_data, power = 2) {
+# Function to interpolate pollution and wind using inverse distance weighting
+interpolate_data <- function(grid_point, sensor_data, power = 2) {
   # grid_point is a vector with x and y coordinates
   point_x <- grid_point[1]
   point_y <- grid_point[2]
@@ -141,14 +146,20 @@ interpolate_pollution <- function(grid_point, sensor_data, power = 2) {
   # Calculate weights (inverse distance weighting)
   weights <- 1 / (distances^power)
   
-  # Weighted average
+  # Weighted averages
   weighted_pollution <- sum(sensor_data$pollution_mean * weights) / sum(weights)
+  weighted_wind_u <- sum(sensor_data$wind_u * weights) / sum(weights)
+  weighted_wind_v <- sum(sensor_data$wind_v * weights) / sum(weights)
+  weighted_wind_speed <- sum(sensor_data$wind_speed * weights) / sum(weights)
   
-  return(weighted_pollution)
+  return(c(pollution = weighted_pollution, 
+           wind_u = weighted_wind_u, 
+           wind_v = weighted_wind_v, 
+           wind_speed = weighted_wind_speed))
 }
 
 # Create interpolated data for each time group
-cat("Interpolating pollution levels...\n")
+cat("Interpolating pollution and wind data...\n")
 interpolated_data <- data.frame()
 
 for(time_point in unique(animation_summary$time_group)) {
@@ -156,9 +167,15 @@ for(time_point in unique(animation_summary$time_group)) {
   
   if(nrow(time_data) >= 2) {  # Need at least 2 sensors for interpolation
     # Interpolate for each grid point
-    grid_pollution <- apply(grid_points, 1, function(point) {
-      interpolate_pollution(c(point[1], point[2]), time_data)
+    grid_results <- apply(grid_points, 1, function(point) {
+      interpolate_data(c(point[1], point[2]), time_data)
     })
+    
+    # Extract results
+    grid_pollution <- grid_results["pollution", ]
+    grid_wind_u <- grid_results["wind_u", ]
+    grid_wind_v <- grid_results["wind_v", ]
+    grid_wind_speed <- grid_results["wind_speed", ]
     
     # Create data frame for this time point
     time_interpolated <- data.frame(
@@ -166,6 +183,9 @@ for(time_point in unique(animation_summary$time_group)) {
       x = grid_points$x,
       y = grid_points$y,
       pollution_mean = grid_pollution,
+      wind_u = grid_wind_u,
+      wind_v = grid_wind_v,
+      wind_speed = grid_wind_speed,
       interpolated = TRUE
     )
     
@@ -177,7 +197,7 @@ cat("Interpolated data created:", nrow(interpolated_data), "grid-time combinatio
 
 # Combine sensor data with interpolated data
 animation_summary$interpolated <- FALSE
-combined_data <- rbind(animation_summary[, c("time_group", "x", "y", "pollution_mean", "interpolated")], 
+combined_data <- rbind(animation_summary[, c("time_group", "x", "y", "pollution_mean", "wind_u", "wind_v", "wind_speed", "interpolated")], 
                       interpolated_data)
 
 # Create the animation
@@ -197,6 +217,18 @@ p <- ggplot(combined_data, aes(x = x, y = y)) +
   geom_point(data = combined_data[combined_data$interpolated == FALSE, ], 
              aes(color = pollution_mean, size = pollution_mean), 
              alpha = 0.9) +
+  # Add wind vectors (arrows) for interpolated points
+  geom_segment(data = combined_data[combined_data$interpolated == TRUE, ], 
+               aes(xend = x + wind_u * 200, yend = y + wind_v * 200, 
+                   linewidth = wind_speed),
+               arrow = arrow(length = unit(0.1, "cm")),
+               color = "white", alpha = 0.7) +
+  # Add wind vectors for sensor points
+  geom_segment(data = combined_data[combined_data$interpolated == FALSE, ], 
+               aes(xend = x + wind_u * 300, yend = y + wind_v * 300, 
+                   linewidth = wind_speed),
+               arrow = arrow(length = unit(0.15, "cm")),
+               color = "black", alpha = 0.8) +
   scale_color_gradient2(
     name = "Pollution\n(particles/cm³)",
     trans = "log10",
@@ -212,12 +244,17 @@ p <- ggplot(combined_data, aes(x = x, y = y)) +
     range = c(8, 25),
     guide = "none"
   ) +
+  scale_linewidth_continuous(
+    name = "Wind Speed\n(m/s)",
+    range = c(0.5, 3),
+    guide = guide_legend(override.aes = list(color = "black"))
+  ) +
   labs(
     title = "Ultrafine Particle Pollution in East Boston",
     subtitle = "Time: {frame_time}",
     x = "Longitude (meters from center)",
     y = "Latitude (meters from center)",
-    caption = "Data: Quant-AQ sensors | Animation shows 30-minute averages"
+    caption = "Data: Quant-AQ sensors | Animation shows 30-minute averages | White/black arrows show wind direction and speed"
   ) +
   theme_minimal() +
   theme(
