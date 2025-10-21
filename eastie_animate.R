@@ -110,26 +110,106 @@ animation_summary <- animation_data %>%
 cat("Animation data prepared:", nrow(animation_summary), "time-sensor combinations\n")
 cat("Time range:", as.character(min(animation_summary$time_group)), "to", as.character(max(animation_summary$time_group)), "\n")
 
+# Create interpolation grid
+cat("\nCreating interpolation grid...\n")
+grid_resolution <- 50  # Number of grid points in each direction
+x_range <- range(sensor_coords$x)
+y_range <- range(sensor_coords$y)
+
+# Add some padding around the sensors
+x_padding <- (x_range[2] - x_range[1]) * 0.2
+y_padding <- (y_range[2] - y_range[1]) * 0.2
+
+grid_x <- seq(x_range[1] - x_padding, x_range[2] + x_padding, length.out = grid_resolution)
+grid_y <- seq(y_range[1] - y_padding, y_range[2] + y_padding, length.out = grid_resolution)
+grid_points <- expand.grid(x = grid_x, y = grid_y)
+
+cat("Grid created with", nrow(grid_points), "interpolation points\n")
+
+# Function to interpolate pollution using inverse distance weighting
+interpolate_pollution <- function(grid_point, sensor_data, power = 2) {
+  # grid_point is a vector with x and y coordinates
+  point_x <- grid_point[1]
+  point_y <- grid_point[2]
+  
+  # Calculate distances to all sensors
+  distances <- sqrt((point_x - sensor_data$x)^2 + (point_y - sensor_data$y)^2)
+  
+  # Avoid division by zero
+  distances[distances < 1] <- 1
+  
+  # Calculate weights (inverse distance weighting)
+  weights <- 1 / (distances^power)
+  
+  # Weighted average
+  weighted_pollution <- sum(sensor_data$pollution_mean * weights) / sum(weights)
+  
+  return(weighted_pollution)
+}
+
+# Create interpolated data for each time group
+cat("Interpolating pollution levels...\n")
+interpolated_data <- data.frame()
+
+for(time_point in unique(animation_summary$time_group)) {
+  time_data <- animation_summary[animation_summary$time_group == time_point, ]
+  
+  if(nrow(time_data) >= 2) {  # Need at least 2 sensors for interpolation
+    # Interpolate for each grid point
+    grid_pollution <- apply(grid_points, 1, function(point) {
+      interpolate_pollution(c(point[1], point[2]), time_data)
+    })
+    
+    # Create data frame for this time point
+    time_interpolated <- data.frame(
+      time_group = time_point,
+      x = grid_points$x,
+      y = grid_points$y,
+      pollution_mean = grid_pollution,
+      interpolated = TRUE
+    )
+    
+    interpolated_data <- rbind(interpolated_data, time_interpolated)
+  }
+}
+
+cat("Interpolated data created:", nrow(interpolated_data), "grid-time combinations\n")
+
+# Combine sensor data with interpolated data
+animation_summary$interpolated <- FALSE
+combined_data <- rbind(animation_summary[, c("time_group", "x", "y", "pollution_mean", "interpolated")], 
+                      interpolated_data)
+
 # Create the animation
 cat("\nCreating animation...\n")
 
 # Define pollution color scale
-pollution_range <- range(animation_summary$pollution_mean, na.rm = TRUE)
+pollution_range <- range(combined_data$pollution_mean, na.rm = TRUE)
 cat("Pollution range for color scale:", pollution_range[1], "to", pollution_range[2], "particles/cm³\n")
 
 # Create the plot
-p <- ggplot(animation_summary, aes(x = x, y = y)) +
-  geom_point(aes(color = pollution_mean, size = pollution_mean), alpha = 0.8) +
-  scale_color_viridis_c(
+p <- ggplot(combined_data, aes(x = x, y = y)) +
+  # Plot interpolated points as background
+  geom_point(data = combined_data[combined_data$interpolated == TRUE, ], 
+             aes(color = pollution_mean), 
+             size = 1, alpha = 0.6) +
+  # Plot sensor points on top
+  geom_point(data = combined_data[combined_data$interpolated == FALSE, ], 
+             aes(color = pollution_mean, size = pollution_mean), 
+             alpha = 0.9) +
+  scale_color_gradient2(
     name = "Pollution\n(particles/cm³)",
     trans = "log10",
     labels = scales::comma_format(),
-    option = "plasma"
+    low = "blue",
+    mid = "yellow", 
+    high = "red",
+    midpoint = log10(mean(animation_summary$pollution_mean, na.rm = TRUE))
   ) +
   scale_size_continuous(
     name = "Pollution\n(particles/cm³)",
     trans = "log10",
-    range = c(3, 15),
+    range = c(8, 25),
     guide = "none"
   ) +
   labs(
@@ -154,10 +234,18 @@ p <- ggplot(animation_summary, aes(x = x, y = y)) +
 
 # Render the animation
 cat("Rendering animation (this may take a few minutes)...\n")
+total_frames <- length(unique(combined_data$time_group))
+target_duration <- 20  # seconds
+fps <- total_frames / target_duration
+
+cat("Total frames:", total_frames, "\n")
+cat("Target duration:", target_duration, "seconds\n") 
+cat("Calculated FPS:", round(fps, 2), "\n")
+
 animated_plot <- animate(
   p,
-  nframes = length(unique(animation_summary$time_group)),
-  fps = 2,
+  nframes = total_frames,
+  fps = fps,
   width = 800,
   height = 600,
   renderer = gifski_renderer()
