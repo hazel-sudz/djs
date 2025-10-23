@@ -7,6 +7,9 @@ library(gganimate)
 library(viridis)
 library(scales)
 library(ggnewscale)
+library(ggmap)
+library(sf)
+library(osmdata)
 
 # Load the Eastie_UFP.rds data
 cat("Loading Eastie_UFP.rds data...\n")
@@ -55,24 +58,86 @@ sensor_coords <- data.frame(
   stringsAsFactors = FALSE
 )
 
-# Calculate center point for normalization
+# Calculate center point and bounding box for map
 center_lat <- mean(sensor_coords$lat)
 center_lon <- mean(sensor_coords$lon)
+
+# Create expanded bounding box to show airport and surrounding area
+lat_range <- range(sensor_coords$lat)
+lon_range <- range(sensor_coords$lon)
+
+# Much larger padding to show airport and surrounding landmarks
+lat_padding <- (lat_range[2] - lat_range[1]) * 2.0  # 2x the sensor spread
+lon_padding <- (lon_range[2] - lon_range[1]) * 2.0  # 2x the sensor spread
+
+bbox <- c(
+  left = lon_range[1] - lon_padding,
+  bottom = lat_range[1] - lat_padding,
+  right = lon_range[2] + lon_padding,
+  top = lat_range[2] + lat_padding
+)
 
 cat("\nSensor coordinates:\n")
 print(sensor_coords)
 cat("\nCenter point:", center_lat, center_lon, "\n")
+cat("Bounding box:", bbox, "\n")
 
-# Convert coordinates to relative positions (normalized around center)
-# Convert lat/lon to approximate meters (rough approximation for small area)
-lat_to_meters <- 111000  # meters per degree latitude
-lon_to_meters <- 111000 * cos(center_lat * pi / 180)  # meters per degree longitude
+# Get OpenStreetMap data for background
+cat("\nGetting OpenStreetMap data...\n")
+# Create bounding box for osmdata
+bbox_osm <- c(bbox["left"], bbox["bottom"], bbox["right"], bbox["top"])
 
-sensor_coords$x <- (sensor_coords$lon - center_lon) * lon_to_meters
-sensor_coords$y <- (sensor_coords$lat - center_lat) * lat_to_meters
+# Get comprehensive OpenStreetMap data for airport and surrounding area
+tryCatch({
+  # Get all road types for detailed street network
+  roads <- opq(bbox = bbox_osm) %>%
+    add_osm_feature(key = "highway", value = c("motorway", "trunk", "primary", "secondary", "tertiary", 
+                                               "residential", "unclassified", "service", "track")) %>%
+    osmdata_sf()
+  
+  # Get water features
+  water <- opq(bbox = bbox_osm) %>%
+    add_osm_feature(key = "natural", value = c("water", "bay", "strait")) %>%
+    osmdata_sf()
+  
+  # Get coastline
+  coastline <- opq(bbox = bbox_osm) %>%
+    add_osm_feature(key = "natural", value = "coastline") %>%
+    osmdata_sf()
+  
+  # Get airport features
+  airport <- opq(bbox = bbox_osm) %>%
+    add_osm_feature(key = "aeroway", value = c("runway", "taxiway", "apron", "terminal", "hangar")) %>%
+    osmdata_sf()
+  
+  # Get buildings and landmarks
+  buildings <- opq(bbox = bbox_osm) %>%
+    add_osm_feature(key = "building") %>%
+    osmdata_sf()
+  
+  # Get points of interest and landmarks
+  poi <- opq(bbox = bbox_osm) %>%
+    add_osm_feature(key = "amenity", value = c("airport", "hospital", "school", "university", "parking")) %>%
+    osmdata_sf()
+  
+  # Get parks and green spaces
+  parks <- opq(bbox = bbox_osm) %>%
+    add_osm_feature(key = "leisure", value = c("park", "golf_course", "sports_centre")) %>%
+    osmdata_sf()
+  
+  cat("Comprehensive OpenStreetMap data retrieved successfully\n")
+  map_data_available <- TRUE
+}, error = function(e) {
+  cat("Error getting OpenStreetMap data:", e$message, "\n")
+  cat("Proceeding without map background\n")
+  map_data_available <- FALSE
+})
 
-cat("\nNormalized sensor positions (meters from center):\n")
-print(sensor_coords[, c("sensor", "x", "y")])
+# Keep original lat/lon coordinates for plotting on map
+sensor_coords$x <- sensor_coords$lon
+sensor_coords$y <- sensor_coords$lat
+
+cat("Map background obtained successfully\n")
 
 # Prepare data for animation
 cat("\nPreparing data for animation...\n")
@@ -115,90 +180,14 @@ animation_summary <- animation_data %>%
 cat("Animation data prepared:", nrow(animation_summary), "time-sensor combinations\n")
 cat("Time range:", as.character(min(animation_summary$time_group)), "to", as.character(max(animation_summary$time_group)), "\n")
 
-# Create interpolation grid
-cat("\nCreating interpolation grid...\n")
-grid_resolution <- 50  # Number of grid points in each direction
-x_range <- range(sensor_coords$x)
-y_range <- range(sensor_coords$y)
+# Skip interpolation grid - we'll only show sensor points
+cat("\nSkipping interpolation - showing only sensor locations\n")
 
-# Add some padding around the sensors
-x_padding <- (x_range[2] - x_range[1]) * 0.2
-y_padding <- (y_range[2] - y_range[1]) * 0.2
-
-grid_x <- seq(x_range[1] - x_padding, x_range[2] + x_padding, length.out = grid_resolution)
-grid_y <- seq(y_range[1] - y_padding, y_range[2] + y_padding, length.out = grid_resolution)
-grid_points <- expand.grid(x = grid_x, y = grid_y)
-
-cat("Grid created with", nrow(grid_points), "interpolation points\n")
-
-# Function to interpolate pollution and wind using inverse distance weighting
-interpolate_data <- function(grid_point, sensor_data, power = 2) {
-  # grid_point is a vector with x and y coordinates
-  point_x <- grid_point[1]
-  point_y <- grid_point[2]
-  
-  # Calculate distances to all sensors
-  distances <- sqrt((point_x - sensor_data$x)^2 + (point_y - sensor_data$y)^2)
-  
-  # Avoid division by zero
-  distances[distances < 1] <- 1
-  
-  # Calculate weights (inverse distance weighting)
-  weights <- 1 / (distances^power)
-  
-  # Weighted averages
-  weighted_pollution <- sum(sensor_data$pollution_mean * weights) / sum(weights)
-  weighted_wind_u <- sum(sensor_data$wind_u * weights) / sum(weights)
-  weighted_wind_v <- sum(sensor_data$wind_v * weights) / sum(weights)
-  weighted_wind_speed <- sum(sensor_data$wind_speed * weights) / sum(weights)
-  
-  return(c(pollution = weighted_pollution, 
-           wind_u = weighted_wind_u, 
-           wind_v = weighted_wind_v, 
-           wind_speed = weighted_wind_speed))
-}
-
-# Create interpolated data for each time group
-cat("Interpolating pollution and wind data...\n")
-interpolated_data <- data.frame()
-
-for(time_point in unique(animation_summary$time_group)) {
-  time_data <- animation_summary[animation_summary$time_group == time_point, ]
-  
-  if(nrow(time_data) >= 2) {  # Need at least 2 sensors for interpolation
-    # Interpolate for each grid point
-    grid_results <- apply(grid_points, 1, function(point) {
-      interpolate_data(c(point[1], point[2]), time_data)
-    })
-    
-    # Extract results
-    grid_pollution <- grid_results["pollution", ]
-    grid_wind_u <- grid_results["wind_u", ]
-    grid_wind_v <- grid_results["wind_v", ]
-    grid_wind_speed <- grid_results["wind_speed", ]
-    
-    # Create data frame for this time point
-    time_interpolated <- data.frame(
-      time_group = time_point,
-      x = grid_points$x,
-      y = grid_points$y,
-      pollution_mean = grid_pollution,
-      wind_u = grid_wind_u,
-      wind_v = grid_wind_v,
-      wind_speed = grid_wind_speed,
-      interpolated = TRUE
-    )
-    
-    interpolated_data <- rbind(interpolated_data, time_interpolated)
-  }
-}
-
-cat("Interpolated data created:", nrow(interpolated_data), "grid-time combinations\n")
-
-# Combine sensor data with interpolated data
+# Use only sensor data (no interpolation)
 animation_summary$interpolated <- FALSE
-combined_data <- rbind(animation_summary[, c("time_group", "x", "y", "pollution_mean", "wind_u", "wind_v", "wind_speed", "interpolated")], 
-                      interpolated_data)
+combined_data <- animation_summary[, c("time_group", "x", "y", "pollution_mean", "wind_u", "wind_v", "wind_speed", "interpolated")]
+
+cat("Using only sensor data:", nrow(combined_data), "sensor-time combinations\n")
 
 # Create the animation
 cat("\nCreating animation...\n")
@@ -207,25 +196,48 @@ cat("\nCreating animation...\n")
 pollution_range <- range(combined_data$pollution_mean, na.rm = TRUE)
 cat("Pollution range for color scale:", pollution_range[1], "to", pollution_range[2], "particles/cm³\n")
 
-# Create the plot
+# Create the plot with comprehensive OpenStreetMap background - sensor points only
 p <- ggplot(combined_data, aes(x = x, y = y)) +
-  # Plot interpolated points as background
-  geom_point(data = combined_data[combined_data$interpolated == TRUE, ], 
-             aes(color = pollution_mean), 
-             size = 1, alpha = 0.6) +
-  # Plot sensor points on top
-  geom_point(data = combined_data[combined_data$interpolated == FALSE, ], 
-             aes(color = pollution_mean, size = pollution_mean), 
+  # Add water features if available
+  {if(exists("map_data_available") && map_data_available && !is.null(water$osm_polygons) && nrow(water$osm_polygons) > 0) {
+    geom_sf(data = water$osm_polygons, fill = "lightblue", color = NA, alpha = 0.6, inherit.aes = FALSE)
+  } else {
+    geom_rect(aes(xmin = bbox["left"], xmax = bbox["right"], 
+                  ymin = bbox["bottom"], ymax = bbox["top"]), 
+              fill = "lightblue", alpha = 0.3, color = "darkblue", linewidth = 1)
+  }} +
+  # Add coastline if available
+  {if(exists("map_data_available") && map_data_available && !is.null(coastline$osm_lines) && nrow(coastline$osm_lines) > 0) {
+    geom_sf(data = coastline$osm_lines, color = "darkblue", linewidth = 1, inherit.aes = FALSE)
+  }} +
+  # Add parks and green spaces
+  {if(exists("map_data_available") && map_data_available && !is.null(parks$osm_polygons) && nrow(parks$osm_polygons) > 0) {
+    geom_sf(data = parks$osm_polygons, fill = "lightgreen", color = NA, alpha = 0.4, inherit.aes = FALSE)
+  }} +
+  # Add buildings (light gray)
+  {if(exists("map_data_available") && map_data_available && !is.null(buildings$osm_polygons) && nrow(buildings$osm_polygons) > 0) {
+    geom_sf(data = buildings$osm_polygons, fill = "lightgray", color = "gray60", linewidth = 0.3, alpha = 0.6, inherit.aes = FALSE)
+  }} +
+  # Add airport features (runways, taxiways, etc.)
+  {if(exists("map_data_available") && map_data_available && !is.null(airport$osm_lines) && nrow(airport$osm_lines) > 0) {
+    geom_sf(data = airport$osm_lines, color = "darkgray", linewidth = 1.5, alpha = 0.8, inherit.aes = FALSE)
+  }} +
+  {if(exists("map_data_available") && map_data_available && !is.null(airport$osm_polygons) && nrow(airport$osm_polygons) > 0) {
+    geom_sf(data = airport$osm_polygons, fill = "lightgray", color = "darkgray", linewidth = 0.8, alpha = 0.7, inherit.aes = FALSE)
+  }} +
+  # Add roads with different styles for different types
+  {if(exists("map_data_available") && map_data_available && !is.null(roads$osm_lines) && nrow(roads$osm_lines) > 0) {
+    geom_sf(data = roads$osm_lines, color = "gray40", linewidth = 0.3, alpha = 0.8, inherit.aes = FALSE)
+  }} +
+  # Add points of interest
+  {if(exists("map_data_available") && map_data_available && !is.null(poi$osm_points) && nrow(poi$osm_points) > 0) {
+    geom_sf(data = poi$osm_points, color = "red", size = 1, alpha = 0.7, inherit.aes = FALSE)
+  }} +
+  # Plot sensor points only
+  geom_point(aes(color = pollution_mean, size = pollution_mean), 
              alpha = 0.9) +
-  # Add wind vectors (arrows) for interpolated points
-  geom_segment(data = combined_data[combined_data$interpolated == TRUE, ], 
-               aes(xend = x + wind_u * 200, yend = y + wind_v * 200, 
-                   linewidth = wind_speed),
-               arrow = arrow(length = unit(0.1, "cm")),
-               color = "white", alpha = 0.7) +
   # Add wind vectors for sensor points
-  geom_segment(data = combined_data[combined_data$interpolated == FALSE, ], 
-               aes(xend = x + wind_u * 300, yend = y + wind_v * 300, 
+  geom_segment(aes(xend = x + wind_u * 0.002, yend = y + wind_v * 0.002, 
                    linewidth = wind_speed),
                arrow = arrow(length = unit(0.15, "cm")),
                color = "black", alpha = 0.8) +
@@ -252,8 +264,8 @@ p <- ggplot(combined_data, aes(x = x, y = y)) +
   labs(
     title = "Ultrafine Particle Pollution in East Boston",
     subtitle = "Time: {frame_time}",
-    x = "Longitude (meters from center)",
-    y = "Latitude (meters from center)",
+    x = "Longitude",
+    y = "Latitude",
     caption = "Data: Quant-AQ sensors | Animation shows 30-minute averages | White/black arrows show wind direction and speed"
   ) +
   theme_minimal() +
@@ -263,9 +275,12 @@ p <- ggplot(combined_data, aes(x = x, y = y)) +
     axis.title = element_text(size = 12),
     legend.title = element_text(size = 10),
     legend.text = element_text(size = 8),
-    panel.grid.minor = element_blank()
+    panel.grid.minor = element_blank(),
+    panel.background = element_rect(fill = "lightblue", color = NA)
   ) +
-  coord_fixed(ratio = 1) +
+  coord_sf(xlim = c(bbox["left"], bbox["right"]), 
+           ylim = c(bbox["bottom"], bbox["top"]), 
+           expand = FALSE) +
   transition_time(time_group) +
   ease_aes('linear')
 
