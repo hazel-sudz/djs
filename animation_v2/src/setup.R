@@ -23,7 +23,5 @@ packages <- c(
   "ggnewscale"
 )
 
-
-
 import_packages(packages=packages)
 
