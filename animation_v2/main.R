@@ -1,7 +1,11 @@
 source ("src/setup.R")
 source ("src/constants.R")
 source ("src/maps.R")
+source ("src/planes.R")
 
+
+dep <- get_bos_departures_opensky("2025-05-01")
+print(dep)
 
 
 # Create and display the map

@@ -20,7 +20,9 @@ packages <- c(
   "lubridate",
   "viridis",
   "scales",
-  "ggnewscale"
+  "ggnewscale",
+  "httr",
+  "jsonlite"
 )
 
 import_packages(packages=packages)
