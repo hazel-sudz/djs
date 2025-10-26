@@ -1,7 +1,12 @@
 # Function to create map with study sites using ggspatial
 create_maps_background <- function(sites_data, 
                                   point_color = "red",
-                                  point_size = 3) {
+                                  point_size = 3,
+                                  long_min = -71.1,
+                                  long_max = -70.9,
+                                  lat_min = 42.3,
+                                  lat_max = 42.45
+                                  ) {
   
   # Create the plot with OpenStreetMap tiles
   map_plot <- ggplot() +
@@ -10,8 +15,8 @@ create_maps_background <- function(sites_data,
                aes(x = lon, y = lat), 
                color = point_color, 
                size = point_size) +
-    coord_sf(xlim = c(-71.1, -70.9),
-             ylim = c(42.3, 42.45),
+    coord_sf(xlim = c(long_min, long_max),
+             ylim = c(lat_min, lat_max),
              crs = 4326) +
     xlab("Longitude") + 
     ylab("Latitude") +
