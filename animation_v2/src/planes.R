@@ -29,8 +29,8 @@ get_bos_departures_opensky <- function(date, start_time = "00:00", end_time = "2
   start_timestamp <- as.numeric(start_datetime)
   end_timestamp <- as.numeric(end_datetime)
   
-  # OpenSky API endpoint for departures
-  url <- paste0(OPENSKY_BASE_URL, "/flights/departure")
+  # OpenSky API endpoint for flights
+  url <- paste0(OPENSKY_BASE_URL, "/flights/all")
   
   # Make API request
   response <- GET(url, query = list(
