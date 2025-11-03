@@ -6,7 +6,7 @@ using the traffic library and OpenSky's Trino institutional interface.
 
 from traffic.data import opensky
 import pandas as pd
-import os
+import os, json
 from datetime import datetime, timedelta
 
 from traffic.data import opensky
