@@ -11,11 +11,27 @@ from datetime import datetime, timedelta
 
 from traffic.data import opensky
 
+airport = "KBOS"
+
+username = os.environ['OPENSKY_USERNAME']
+password = os.environ['OPENSKY_PASSWORD']
+
 flight = opensky.history(
-    "2017-02-05 15:45",
-    stop="2017-02-05 16:45",
-    callsign="EZY158T",
+    start="2025-08-01 00:00",
+    stop="2025-08-01 01:00",
+    airport=airport,
     # returns a Flight instead of a Traffic
-    return_flight=True
+    return_flight=False,
+    cached=True,
+    compress=True,
+    limit=None,
+
 )
 print(flight)
+
+print(type(flight))
+print(len(flight))
+print(flight.data.head())
+
+for f in flight:
+    print(f.callsign, f.start, f.stop)
