@@ -1,7 +1,6 @@
 source ("src/setup.R")
 source ("src/constants.R")
 source ("src/maps.R")
-source ("src/planes.R")
 
 
 # Create and display the map
