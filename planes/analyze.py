@@ -34,34 +34,17 @@ data format:
   },
 """
 
-def get_data_by_callsign():
-    current_folder = Path(__file__).parent
-    data_folder = current_folder.joinpath("data")
-
-    # load all data for a given day and merge by callsign
-    all_data = {}
-
-    august_first = data_folder.joinpath("2025-08-01")
-    for day_data in august_first.iterdir():
-        for files in day_data.iterdir():
-            if "json" in files.name:
-                 data = json.loads(files.read_text())
-
-                 for entry in data:
-                    callsign = entry["callsign"]
-                    if callsign not in all_data:
-                        all_data[callsign] = []
-
-                    all_data[callsign].append(entry)
+def filter_takeoff_landing(all_data, takeoff_threshold=10000):
+    """
+    Filter callsigns to only include those with both takeoff and landing.
     
-    # Sort all entries by timestamp for each callsign
-    for callsign in all_data:
-        all_data[callsign].sort(key=lambda x: x["timestamp"])
+    Args:
+        all_data: Dictionary mapping callsign to list of flight entries
+        takeoff_threshold: Altitude threshold in feet (default: 10000)
     
-    # Determine takeoff and landing times for each callsign
-    # Takeoff is defined as first moment when altitude reaches 10,000 ft
-    # Landing is defined as last moment when altitude is >= 10,000 ft (before descending below)
-    takeoff_threshold = 10000  # feet
+    Returns:
+        tuple: (takeoff_times, landing_times) dictionaries mapping callsign to timestamp
+    """
     takeoff_times = {}
     landing_times = {}
     
@@ -92,12 +75,43 @@ def get_data_by_callsign():
             takeoff_times[callsign] = takeoff_time
             landing_times[callsign] = landing_time
     
+    return takeoff_times, landing_times
+
+
+def get_data_by_callsign():
+    current_folder = Path(__file__).parent
+    data_folder = current_folder.joinpath("data")
+
+    # load all data for a given day and merge by callsign
+    all_data = {}
+
+    august_first = data_folder.joinpath("2025-08-01")
+    for day_data in august_first.iterdir():
+        for files in day_data.iterdir():
+            if "json" in files.name:
+                 data = json.loads(files.read_text())
+
+                 for entry in data:
+                    callsign = entry["callsign"]
+                    if callsign not in all_data:
+                        all_data[callsign] = []
+
+                    all_data[callsign].append(entry)
+    
+    # Sort all entries by timestamp for each callsign
+    for callsign in all_data:
+        all_data[callsign].sort(key=lambda x: x["timestamp"])
+    
+    # Filter to only callsigns with both takeoff and landing
+    takeoff_threshold = 10000  # feet
+    takeoff_times, landing_times = filter_takeoff_landing(all_data, takeoff_threshold)
+    
     print(f"Found {len(takeoff_times)} callsigns with both takeoff and landing")
     print(f"  (Filtered out callsigns that only had takeoff or only had landing)")
     
-    # Bin takeoff times by minute
+    # Bin takeoff times by minute (using only callsigns with both takeoff and landing)
     # Convert timestamps to datetime and round to nearest minute
-    takeoff_datetimes = [datetime.fromtimestamp(ts / 1000) for ts in takeoff_times]
+    takeoff_datetimes = [datetime.fromtimestamp(ts / 1000) for ts in takeoff_times.values()]
     
     # Create minute bins (round down to the minute)
     minute_bins = defaultdict(int)
@@ -110,6 +124,10 @@ def get_data_by_callsign():
     sorted_minutes = sorted(minute_bins.keys())
     takeoff_counts = [minute_bins[minute] for minute in sorted_minutes]
     
+    if not sorted_minutes:
+        print("No takeoff data to plot after filtering.")
+        return
+    
     # Create the plot - using bar plot since we have discrete time bins
     plt.figure(figsize=(14, 6))
     # Use timedelta for bar width (1 minute)
@@ -117,7 +135,8 @@ def get_data_by_callsign():
     plt.bar(sorted_minutes, takeoff_counts, width=bar_width, align='edge', alpha=0.7, color='steelblue')
     plt.xlabel('Time', fontsize=12)
     plt.ylabel('Number of Takeoffs', fontsize=12)
-    plt.title(f'Takeoff Count per Minute (Takeoff = Altitude ≥ {takeoff_threshold:,} ft)', 
+    plt.title(f'Takeoff Count per Minute (Takeoff = Altitude ≥ {takeoff_threshold:,} ft)\n' +
+              f'Only callsigns with both takeoff and landing', 
               fontsize=14, fontweight='bold')
     plt.grid(True, alpha=0.3, axis='y')
     plt.xticks(rotation=45)
@@ -129,7 +148,7 @@ def get_data_by_callsign():
     print(f"Plot saved to: {output_path}")
     
     # Print statistics
-    print(f"\nTakeoff Statistics:")
+    print(f"\nTakeoff Statistics (only callsigns with both takeoff and landing):")
     print(f"  Total takeoffs detected: {len(takeoff_times)}")
     print(f"  Time range: {sorted_minutes[0]} to {sorted_minutes[-1]}")
     print(f"  Max takeoffs in a single minute: {max(takeoff_counts)}")

@@ -4,10 +4,6 @@ source ("src/maps.R")
 source ("src/planes.R")
 
 
-dep <- get_bos_departures_opensky("2025-05-01")
-print(dep)
-
-
 # Create and display the map
 cape_point_map <- create_maps_background(sites_data = sensor_coords)
 cape_point_map
