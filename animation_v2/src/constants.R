@@ -13,9 +13,9 @@ lon_center <- mean(sensor_coords$lon)
 lat_range <- max(sensor_coords$lat) - min(sensor_coords$lat)
 lon_range <- max(sensor_coords$lon) - min(sensor_coords$lon)
 
-# Add padding (20% of the range or minimum 0.01 degrees)
-lat_padding <- max(0.01, lat_range * 0.2)
-lon_padding <- max(0.01, lon_range * 0.2)
+# Add padding (5% of the range or minimum 0.005 degrees) - reduced for tighter zoom
+lat_padding <- max(0.005, lat_range * 0.05)
+lon_padding <- max(0.005, lon_range * 0.05)
 
 lat_min <- lat_center - lat_range/2 - lat_padding
 lat_max <- lat_center + lat_range/2 + lat_padding

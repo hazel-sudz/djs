@@ -4,7 +4,13 @@ source ("src/maps.R")
 
 
 # Create and display the map
-cape_point_map <- create_maps_background(sites_data = sensor_coords)
+cape_point_map <- create_maps_background(
+  sites_data = sensor_coords,
+  long_min = lon_min,
+  long_max = lon_max,
+  lat_min = lat_min,
+  lat_max = lat_max
+)
 cape_point_map
 
 # Save at high resolution (1080p equivalent at 600 DPI)

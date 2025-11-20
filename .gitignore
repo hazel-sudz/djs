@@ -2,3 +2,4 @@
 *.Rhistory
 *.RData
 planes/data
+**/rosm.cache/**
