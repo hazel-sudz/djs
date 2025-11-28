@@ -316,6 +316,17 @@ def process_day_enhanced(df: pd.DataFrame, target_date: str, sensor_coords: list
     # Drop invalid rows
     df = df.dropna(subset=['pollution', 'lat', 'lon', 'sensor_id'])
 
+    # Filter outliers: p99.9 cap and spike detection
+    if len(df) > 0:
+        p999 = df['pollution'].quantile(0.999)
+        df['rolling_median'] = df.groupby('sensor_id')['pollution'].transform(
+            lambda x: x.rolling(window=5, min_periods=1, center=True).median()
+        )
+        # Filter: below p99.9 AND not a >100x spike from rolling median
+        spike_mask = (df['pollution'] / df['rolling_median'].clip(lower=1)) <= 100
+        df = df[(df['pollution'] <= p999) & spike_mask]
+        df = df.drop(columns=['rolling_median'])
+
     if len(df) == 0:
         return []
 
@@ -358,33 +369,55 @@ def process_day_enhanced(df: pd.DataFrame, target_date: str, sensor_coords: list
         lat = sensor_df['lat'].iloc[0]
         lon = sensor_df['lon'].iloc[0]
 
+        # Process wind data for this sensor
+        wind_cols = ['met_wx_u', 'met_wx_v', 'met_wx_ws']
+        sensor_wind_df = sensor_df[['timestamp'] + wind_cols].dropna()
+
+        if len(sensor_wind_df) > 0:
+            wind_times = sensor_wind_df['timestamp'].astype(np.int64) / 1e9
+            smoothed_wind_u = gaussian_kernel_smooth(
+                wind_times.values, sensor_wind_df['met_wx_u'].values,
+                target_times_numeric.values, sigma_minutes=smoothing_sigma_minutes
+            )
+            smoothed_wind_v = gaussian_kernel_smooth(
+                wind_times.values, sensor_wind_df['met_wx_v'].values,
+                target_times_numeric.values, sigma_minutes=smoothing_sigma_minutes
+            )
+            smoothed_wind_speed = gaussian_kernel_smooth(
+                wind_times.values, sensor_wind_df['met_wx_ws'].values,
+                target_times_numeric.values, sigma_minutes=smoothing_sigma_minutes
+            )
+        else:
+            smoothed_wind_u = np.zeros(len(frame_times))
+            smoothed_wind_v = np.zeros(len(frame_times))
+            smoothed_wind_speed = np.zeros(len(frame_times))
+
         sensor_data[sensor] = {
             'lat': lat,
             'lon': lon,
             'pollution': smoothed_pollution,
-            'trends': trends
+            'trends': trends,
+            'wind_u': smoothed_wind_u,
+            'wind_v': smoothed_wind_v,
+            'wind_speed': smoothed_wind_speed
         }
 
-    # Process wind data (single time series since it's from one station)
-    wind_df = df[['timestamp', 'met_wx_u', 'met_wx_v', 'met_wx_ws']].drop_duplicates('timestamp').sort_values('timestamp')
-    wind_df = wind_df.dropna()
+    # Calculate average wind for global metrics (gradient analysis etc.)
+    all_wind_u = np.zeros(len(frame_times))
+    all_wind_v = np.zeros(len(frame_times))
+    all_wind_speed = np.zeros(len(frame_times))
+    wind_count = 0
 
-    if len(wind_df) > 0:
-        wind_times_numeric = wind_df['timestamp'].astype(np.int64) / 1e9
-        target_times_numeric = frame_times.astype(np.int64) / 1e9
+    for data in sensor_data.values():
+        all_wind_u += data['wind_u']
+        all_wind_v += data['wind_v']
+        all_wind_speed += data['wind_speed']
+        wind_count += 1
 
-        smoothed_wind_u = gaussian_kernel_smooth(
-            wind_times_numeric.values, wind_df['met_wx_u'].values,
-            target_times_numeric.values, sigma_minutes=smoothing_sigma_minutes
-        )
-        smoothed_wind_v = gaussian_kernel_smooth(
-            wind_times_numeric.values, wind_df['met_wx_v'].values,
-            target_times_numeric.values, sigma_minutes=smoothing_sigma_minutes
-        )
-        smoothed_wind_speed = gaussian_kernel_smooth(
-            wind_times_numeric.values, wind_df['met_wx_ws'].values,
-            target_times_numeric.values, sigma_minutes=smoothing_sigma_minutes
-        )
+    if wind_count > 0:
+        smoothed_wind_u = all_wind_u / wind_count
+        smoothed_wind_v = all_wind_v / wind_count
+        smoothed_wind_speed = all_wind_speed / wind_count
     else:
         smoothed_wind_u = np.zeros(len(frame_times))
         smoothed_wind_v = np.zeros(len(frame_times))
@@ -459,15 +492,21 @@ def process_day_enhanced(df: pd.DataFrame, target_date: str, sensor_coords: list
             return ""
 
         sensors_list = []
-        for j in range(len(sensor_lons)):
+        for j, sensor_id in enumerate(sensor_ids):
             label = f"{format_label(pollution_values[j])}{trend_symbol(trend_values[j])}"
+            sensor_wind_u = sensor_data[sensor_id]['wind_u'][i]
+            sensor_wind_v = sensor_data[sensor_id]['wind_v'][i]
+            sensor_wind_speed = sensor_data[sensor_id]['wind_speed'][i]
             sensors_list.append((
                 sensor_lons[j],
                 sensor_lats[j],
                 pollution_values[j],
                 label,
                 trend_values[j],
-                upwindness[j]
+                upwindness[j],
+                sensor_wind_u,      # Per-sensor wind u component
+                sensor_wind_v,      # Per-sensor wind v component
+                sensor_wind_speed   # Per-sensor wind speed
             ))
 
         frames.append(EnhancedFrameData(
