@@ -2,6 +2,9 @@
 # Parallel Processing Functions
 # =============================================================================
 # Functions for parallel frame generation using multiple CPU cores.
+#
+# Uses over-provisioning (10x cores) since each render task doesn't fully
+# utilize a CPU core due to I/O operations.
 
 # Detect number of available CPU cores
 # @return Number of cores available for parallel processing
@@ -11,7 +14,7 @@ detect_cores <- function() {
   cores
 }
 
-# Generate frames in parallel using all available cores
+# Generate frames in parallel with progress bar
 # @param unique_times Vector of unique time points
 # @param animation_data Full animation dataset
 # @param wind_summary Wind summary dataset
@@ -20,23 +23,23 @@ detect_cores <- function() {
 # @param pollution_stats Pollution statistics for scaling
 # @param output_dir Output directory for frames
 # @param title_date Date string for titles
-# @param n_cores Number of cores to use (NULL = auto-detect)
+# @param n_cores Number of cores to use (NULL = auto 10x cores)
 # @return Vector of generated frame file paths
 generate_frames_parallel <- function(unique_times, animation_data, wind_summary,
                                       sensor_coords, map_extent, pollution_stats,
                                       output_dir = "out", title_date = "August 1, 2025",
                                       n_cores = NULL) {
-  # Detect cores if not specified
+  # Detect cores if not specified - use 10x for over-provisioning
   if (is.null(n_cores)) {
-    n_cores <- detect_cores()
+    base_cores <- detect_cores()
+    n_cores <- base_cores * 10
   }
 
-  # Use n_cores - 1 to leave one core free for system, minimum 1
-  n_workers <- max(1, n_cores - 1)
-  cat("Using", n_workers, "worker cores for parallel processing\n")
+  n_workers <- n_cores
+  cat("Using", n_workers, "worker processes (10x over-provisioned)\n")
 
   n_frames <- length(unique_times)
-  cat("Generating", n_frames, "frames in parallel...\n")
+  cat("Generating", n_frames, "frames in parallel with progress bar...\n\n")
 
   # Create cluster
   cl <- parallel::makeCluster(n_workers)
@@ -55,6 +58,7 @@ generate_frames_parallel <- function(unique_times, animation_data, wind_summary,
       library(dplyr)
       library(viridis)
       library(scales)
+      library(ragg)
     })
   })
 
@@ -66,7 +70,8 @@ generate_frames_parallel <- function(unique_times, animation_data, wind_summary,
     "add_pollution_labels",
     "add_frame_labels",
     "calculate_wind_arrow",
-    "format_pollution_label"
+    "format_pollution_label",
+    "format_wind_label"
   ), envir = globalenv())
 
   # Define the worker function
@@ -88,10 +93,10 @@ generate_frames_parallel <- function(unique_times, animation_data, wind_summary,
     frame_plot <- add_pollution_labels(frame_plot, time_data)
     frame_plot <- add_frame_labels(frame_plot, current_time, title_date)
 
-    # Save frame
+    # Save frame using ragg for high-performance rendering
     filename <- sprintf("%s/frame_%04d.png", output_dir, i)
     ggsave(filename, plot = frame_plot, width = 12, height = 8, dpi = 150,
-           bg = "white")
+           bg = "white", device = ragg::agg_png)
 
     filename
   }
@@ -99,20 +104,23 @@ generate_frames_parallel <- function(unique_times, animation_data, wind_summary,
   # Export the worker function
   parallel::clusterExport(cl, "generate_single_frame_worker", envir = environment())
 
-  # Track progress with a simple counter
+  # Track time
   start_time <- Sys.time()
 
-  # Run in parallel with progress reporting
-  frame_files <- parallel::parLapply(cl, seq_along(unique_times), function(i) {
-    generate_single_frame_worker(i)
-  })
+  # Run in parallel with progress bar using pbapply
+  frame_files <- pbapply::pblapply(
+    seq_along(unique_times),
+    function(i) generate_single_frame_worker(i),
+    cl = cl
+  )
 
   # Stop cluster
   parallel::stopCluster(cl)
 
   elapsed <- as.numeric(difftime(Sys.time(), start_time, units = "secs"))
-  cat("Completed", n_frames, "frames in", round(elapsed, 1), "seconds\n")
+  cat("\nCompleted", n_frames, "frames in", round(elapsed, 1), "seconds\n")
   cat("Average:", round(elapsed / n_frames, 2), "seconds per frame\n")
+  cat("Effective throughput:", round(n_frames / elapsed * 60, 1), "frames per minute\n")
 
   unlist(frame_files)
 }

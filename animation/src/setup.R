@@ -23,7 +23,9 @@ packages <- c(
   "ggnewscale",
   "httr",
   "jsonlite",
-  "av"
+  "av",
+  "pbapply",
+  "ragg"  # High-performance graphics device
 )
 
 import_packages(packages=packages)

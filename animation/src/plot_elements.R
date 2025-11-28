@@ -3,15 +3,22 @@
 # =============================================================================
 # Functions for adding visual elements (pollution circles, wind arrows) to maps.
 
-# Format pollution value for display
+# Format pollution value for display with units
 # @param value Numeric pollution value
-# @return Formatted string with units (e.g., "45.2K particles/cm³")
+# @return Formatted string with units (e.g., "45.2K p/cm³")
 format_pollution_label <- function(value) {
   if (value >= 1000) {
-    sprintf("%.1fK", value / 1000)
+    sprintf("%.1fK p/cm³", value / 1000)
   } else {
-    sprintf("%.0f", value)
+    sprintf("%.0f p/cm³", value)
   }
+}
+
+# Format wind speed for display with units
+# @param speed Wind speed in m/s
+# @return Formatted string (e.g., "3.2 m/s")
+format_wind_label <- function(speed) {
+  sprintf("%.1f m/s", speed)
 }
 
 # Add pollution circles to a ggplot map
@@ -49,7 +56,7 @@ add_pollution_circles <- function(plot, time_data, pollution_stats) {
 # @param time_data Data for current time point with pollution values
 # @param label_offset Vertical offset for labels (in degrees latitude)
 # @return ggplot object with pollution labels added
-add_pollution_labels <- function(plot, time_data, label_offset = 0.004) {
+add_pollution_labels <- function(plot, time_data, label_offset = 0.002) {
   # Create label data with formatted values and offset positions
   label_data <- time_data %>%
     mutate(
@@ -61,12 +68,12 @@ add_pollution_labels <- function(plot, time_data, label_offset = 0.004) {
     geom_label(
       data = label_data,
       aes(x = lon, y = label_y, label = label),
-      size = 3.5,
+      size = 3,
       fontface = "bold",
       fill = "white",
-      alpha = 0.85,
-      label.padding = unit(0.2, "lines"),
-      label.size = 0.3
+      alpha = 0.9,
+      label.padding = unit(0.15, "lines"),
+      label.size = 0.25
     )
 }
 
@@ -86,8 +93,7 @@ calculate_wind_arrow <- function(lon_center, lat_center, wind_u, wind_v,
   }
 
   # Calculate wind vector magnitude from components
-
-wind_magnitude <- sqrt(wind_u^2 + wind_v^2)
+  wind_magnitude <- sqrt(wind_u^2 + wind_v^2)
 
   if (wind_magnitude <= 0) {
     return(NULL)
@@ -103,18 +109,18 @@ wind_magnitude <- sqrt(wind_u^2 + wind_v^2)
   )
 }
 
-# Add wind arrow to a ggplot map
+# Add wind arrow to a ggplot map with speed label
 # @param plot Base ggplot object
 # @param wind_data Wind summary data for current time point
 # @param lon_center Center longitude for arrow placement
 # @param lat_center Center latitude for arrow placement
 # @param map_extent List with lat_min, lat_max, lon_min, lon_max
-# @return ggplot object with wind arrow added
+# @return ggplot object with wind arrow and label added
 add_wind_arrow <- function(plot, wind_data, lon_center, lat_center, map_extent) {
-  # Calculate arrow scale based on map size (15% of smaller dimension)
+  # Calculate arrow scale based on map size (40% of smaller dimension for bigger arrow)
   map_lat_range <- map_extent$lat_max - map_extent$lat_min
   map_lon_range <- map_extent$lon_max - map_extent$lon_min
-  arrow_scale <- min(map_lat_range, map_lon_range) * 0.15
+  arrow_scale <- min(map_lat_range, map_lon_range) * 0.4
 
   # Check if we have valid wind data
   if (nrow(wind_data) == 0 || is.na(wind_data$avg_wind_u) || is.na(wind_data$avg_wind_v)) {
@@ -124,33 +130,44 @@ add_wind_arrow <- function(plot, wind_data, lon_center, lat_center, map_extent) 
         data = data.frame(x = lon_center, y = lat_center),
         aes(x = x, y = y),
         color = "darkblue",
-        size = 3,
+        size = 4,
         shape = 21,
         fill = "white",
         stroke = 2
       ))
   }
 
+  wind_speed <- wind_data$avg_wind_speed[1]
+
   # Calculate arrow endpoint
   arrow_end <- calculate_wind_arrow(
     lon_center, lat_center,
     wind_data$avg_wind_u[1],
     wind_data$avg_wind_v[1],
-    wind_data$avg_wind_speed[1],
+    wind_speed,
     arrow_scale
   )
 
   if (is.null(arrow_end)) {
-    # Invalid wind - just show center point
+    # Invalid wind - just show center point with label
     return(plot +
       geom_point(
         data = data.frame(x = lon_center, y = lat_center),
         aes(x = x, y = y),
         color = "darkblue",
-        size = 3,
+        size = 4,
         shape = 21,
         fill = "white",
         stroke = 2
+      ) +
+      geom_label(
+        data = data.frame(x = lon_center, y = lat_center + 0.003),
+        aes(x = x, y = y, label = "0.0 m/s"),
+        size = 3.5,
+        fontface = "bold",
+        fill = "lightblue",
+        alpha = 0.9,
+        label.padding = unit(0.2, "lines")
       ))
   }
 
@@ -162,24 +179,40 @@ add_wind_arrow <- function(plot, wind_data, lon_center, lat_center, map_extent) 
     yend = arrow_end$end_lat
   )
 
-  # Add wind arrow and center point to plot
+  # Calculate label position (above the arrow endpoint)
+  label_y <- max(lat_center, arrow_end$end_lat) + 0.003
+
+  # Create wind label
+  wind_label <- format_wind_label(wind_speed)
+
+  # Add wind arrow, center point, and speed label to plot
   plot +
     geom_segment(
       data = arrow_df,
       aes(x = x, y = y, xend = xend, yend = yend),
-      arrow = arrow(length = unit(0.3, "cm"), type = "closed"),
+      arrow = arrow(length = unit(0.4, "cm"), type = "closed"),
       color = "darkblue",
-      linewidth = 2,
-      alpha = 0.8
+      linewidth = 2.5,
+      alpha = 0.9
     ) +
     geom_point(
       data = data.frame(x = lon_center, y = lat_center),
       aes(x = x, y = y),
       color = "darkblue",
-      size = 3,
+      size = 4,
       shape = 21,
       fill = "white",
       stroke = 2
+    ) +
+    geom_label(
+      data = data.frame(x = lon_center, y = label_y, label = wind_label),
+      aes(x = x, y = y, label = label),
+      size = 3.5,
+      fontface = "bold",
+      fill = "lightblue",
+      alpha = 0.9,
+      label.padding = unit(0.2, "lines"),
+      label.size = 0.3
     )
 }
 

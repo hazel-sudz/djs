@@ -45,7 +45,8 @@ create_single_frame <- function(time_index, current_time, animation_data, wind_s
 save_frame <- function(plot, frame_number, output_dir = "out",
                         width = 12, height = 8, dpi = 150) {
   filename <- sprintf("%s/frame_%04d.png", output_dir, frame_number)
-  ggsave(filename, plot = plot, width = width, height = height, dpi = dpi)
+  ggsave(filename, plot = plot, width = width, height = height, dpi = dpi,
+         bg = "white", device = ragg::agg_png)
   filename
 }
 
