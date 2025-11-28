@@ -1,0 +1,17 @@
+[project]
+name = "ufp-animation"
+version = "1.0.0"
+description = "UFP Animation Pipeline with M2 Metal GPU acceleration"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=2.0.0",
+    "pandas>=2.2.0",
+    "pyreadr>=0.5.2",
+    "requests>=2.32.0",
+    "pillow>=11.0.0",
+    "scipy>=1.14.0",
+    "pyobjc-core>=10.3",
+    "pyobjc-framework-Cocoa>=10.3",
+    "pyobjc-framework-Quartz>=10.3",
+    "pyobjc-framework-CoreText>=10.3",
+]

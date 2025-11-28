@@ -1,0 +1,13 @@
+{
+  "": {
+    "dependencies": "/Users/hazelsudzilouski/Desktop/djs/animation/gpu_renderer/.build/arm64-apple-macosx/release/render_frames.build/render_frames.d",
+    "object": "/Users/hazelsudzilouski/Desktop/djs/animation/gpu_renderer/.build/arm64-apple-macosx/release/render_frames.build/render_frames.o",
+    "swift-dependencies": "/Users/hazelsudzilouski/Desktop/djs/animation/gpu_renderer/.build/arm64-apple-macosx/release/render_frames.build/master.swiftdeps"
+  },
+  "/Users/hazelsudzilouski/Desktop/djs/animation/gpu_renderer/Sources/main.swift": {
+    "object": "/Users/hazelsudzilouski/Desktop/djs/animation/gpu_renderer/.build/arm64-apple-macosx/release/render_frames.build/main.swift.o",
+    "swiftmodule": "/Users/hazelsudzilouski/Desktop/djs/animation/gpu_renderer/.build/arm64-apple-macosx/release/render_frames.build/main~partial.swiftmodule",
+    "swift-dependencies": "/Users/hazelsudzilouski/Desktop/djs/animation/gpu_renderer/.build/arm64-apple-macosx/release/render_frames.build/main.swiftdeps",
+    "diagnostics": "/Users/hazelsudzilouski/Desktop/djs/animation/gpu_renderer/.build/arm64-apple-macosx/release/render_frames.build/main.dia"
+  }
+}

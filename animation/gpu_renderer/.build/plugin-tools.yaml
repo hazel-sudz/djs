@@ -1,0 +1,66 @@
+client:
+  name: basic
+  file-system: device-agnostic
+tools: {}
+targets:
+  "PackageStructure": ["<PackageStructure>"]
+  "main": ["<render-frames-arm64-apple-macosx26.0-release.exe>","<render-frames-arm64-apple-macosx26.0-release.module>"]
+  "render-frames-arm64-apple-macosx26.0-release.exe": ["<render-frames-arm64-apple-macosx26.0-release.exe>"]
+  "render-frames-arm64-apple-macosx26.0-release.module": ["<render-frames-arm64-apple-macosx26.0-release.module>"]
+  "test": ["<render-frames-arm64-apple-macosx26.0-release.exe>","<render-frames-arm64-apple-macosx26.0-release.module>"]
+default: "main"
+nodes:
+  "/Users/hazelsudzilouski/Desktop/djs/animation/gpu_renderer/Sources/":
+    is-directory-structure: true
+    content-exclusion-patterns: [".git",".build"]
+commands:
+  "/Users/hazelsudzilouski/Desktop/djs/animation/gpu_renderer/.build/arm64-apple-macosx/release/render-frames.product/Objects.LinkFileList":
+    tool: write-auxiliary-file
+    inputs: ["<link-file-list>","/Users/hazelsudzilouski/Desktop/djs/animation/gpu_renderer/.build/arm64-apple-macosx/release/render_frames.build/main.swift.o"]
+    outputs: ["/Users/hazelsudzilouski/Desktop/djs/animation/gpu_renderer/.build/arm64-apple-macosx/release/render-frames.product/Objects.LinkFileList"]
+    description: "Write auxiliary file /Users/hazelsudzilouski/Desktop/djs/animation/gpu_renderer/.build/arm64-apple-macosx/release/render-frames.product/Objects.LinkFileList"
+
+  "/Users/hazelsudzilouski/Desktop/djs/animation/gpu_renderer/.build/arm64-apple-macosx/release/render_frames.build/sources":
+    tool: write-auxiliary-file
+    inputs: ["<sources-file-list>","/Users/hazelsudzilouski/Desktop/djs/animation/gpu_renderer/Sources/main.swift"]
+    outputs: ["/Users/hazelsudzilouski/Desktop/djs/animation/gpu_renderer/.build/arm64-apple-macosx/release/render_frames.build/sources"]
+    description: "Write auxiliary file /Users/hazelsudzilouski/Desktop/djs/animation/gpu_renderer/.build/arm64-apple-macosx/release/render_frames.build/sources"
+
+  "/Users/hazelsudzilouski/Desktop/djs/animation/gpu_renderer/.build/arm64-apple-macosx/release/swift-version--58304C5D6DBC2206.txt":
+    tool: write-auxiliary-file
+    inputs: ["<swift-get-version>","/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"]
+    outputs: ["/Users/hazelsudzilouski/Desktop/djs/animation/gpu_renderer/.build/arm64-apple-macosx/release/swift-version--58304C5D6DBC2206.txt"]
+    always-out-of-date: "true"
+    description: "Write auxiliary file /Users/hazelsudzilouski/Desktop/djs/animation/gpu_renderer/.build/arm64-apple-macosx/release/swift-version--58304C5D6DBC2206.txt"
+
+  "<render-frames-arm64-apple-macosx26.0-release.exe>":
+    tool: phony
+    inputs: ["/Users/hazelsudzilouski/Desktop/djs/animation/gpu_renderer/.build/arm64-apple-macosx/release/render-frames"]
+    outputs: ["<render-frames-arm64-apple-macosx26.0-release.exe>"]
+
+  "<render-frames-arm64-apple-macosx26.0-release.module>":
+    tool: phony
+    inputs: ["/Users/hazelsudzilouski/Desktop/djs/animation/gpu_renderer/.build/arm64-apple-macosx/release/render_frames.build/main.swift.o","/Users/hazelsudzilouski/Desktop/djs/animation/gpu_renderer/.build/arm64-apple-macosx/release/Modules/render_frames.swiftmodule"]
+    outputs: ["<render-frames-arm64-apple-macosx26.0-release.module>"]
+
+  "C.render-frames-arm64-apple-macosx26.0-release.exe":
+    tool: shell
+    inputs: ["/Users/hazelsudzilouski/Desktop/djs/animation/gpu_renderer/.build/arm64-apple-macosx/release/render_frames.build/main.swift.o","/Users/hazelsudzilouski/Desktop/djs/animation/gpu_renderer/.build/arm64-apple-macosx/release/render-frames.product/Objects.LinkFileList"]
+    outputs: ["/Users/hazelsudzilouski/Desktop/djs/animation/gpu_renderer/.build/arm64-apple-macosx/release/render-frames"]
+    description: "Linking ./.build/arm64-apple-macosx/release/render-frames"
+    args: ["/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc","-L","/Users/hazelsudzilouski/Desktop/djs/animation/gpu_renderer/.build/arm64-apple-macosx/release","-o","/Users/hazelsudzilouski/Desktop/djs/animation/gpu_renderer/.build/arm64-apple-macosx/release/render-frames","-module-name","render_frames","-Xlinker","-no_warn_duplicate_libraries","-emit-executable","-Xlinker","-dead_strip","-Xlinker","-alias","-Xlinker","_render_frames_main","-Xlinker","_main","-Xlinker","-rpath","-Xlinker","@loader_path","@/Users/hazelsudzilouski/Desktop/djs/animation/gpu_renderer/.build/arm64-apple-macosx/release/render-frames.product/Objects.LinkFileList","-target","arm64-apple-macosx13.0","-plugin-path","/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing","-sdk","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk","-F","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks","-F","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/PrivateFrameworks","-I","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-L","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-g"]
+
+  "C.render-frames-arm64-apple-macosx26.0-release.module":
+    tool: shell
+    inputs: ["/Users/hazelsudzilouski/Desktop/djs/animation/gpu_renderer/Sources/main.swift","/Users/hazelsudzilouski/Desktop/djs/animation/gpu_renderer/.build/arm64-apple-macosx/release/swift-version--58304C5D6DBC2206.txt","/Users/hazelsudzilouski/Desktop/djs/animation/gpu_renderer/.build/arm64-apple-macosx/release/render_frames.build/sources"]
+    outputs: ["/Users/hazelsudzilouski/Desktop/djs/animation/gpu_renderer/.build/arm64-apple-macosx/release/render_frames.build/main.swift.o","/Users/hazelsudzilouski/Desktop/djs/animation/gpu_renderer/.build/arm64-apple-macosx/release/Modules/render_frames.swiftmodule"]
+    description: "Compiling Swift Module 'render_frames' (1 sources)"
+    args: ["/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc","-module-name","render_frames","-emit-dependencies","-emit-module","-emit-module-path","/Users/hazelsudzilouski/Desktop/djs/animation/gpu_renderer/.build/arm64-apple-macosx/release/Modules/render_frames.swiftmodule","-output-file-map","/Users/hazelsudzilouski/Desktop/djs/animation/gpu_renderer/.build/arm64-apple-macosx/release/render_frames.build/output-file-map.json","-whole-module-optimization","-num-threads","12","-c","@/Users/hazelsudzilouski/Desktop/djs/animation/gpu_renderer/.build/arm64-apple-macosx/release/render_frames.build/sources","-I","/Users/hazelsudzilouski/Desktop/djs/animation/gpu_renderer/.build/arm64-apple-macosx/release/Modules","-target","arm64-apple-macosx13.0","-whole-module-optimization","-num-threads","12","-serialize-diagnostics","-O","-j12","-DSWIFT_PACKAGE","-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE","-module-cache-path","/Users/hazelsudzilouski/Desktop/djs/animation/gpu_renderer/.build/arm64-apple-macosx/release/ModuleCache","-parseable-output","-Xfrontend","-entry-point-function-name","-Xfrontend","render_frames_main","-swift-version","5","-plugin-path","/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing","-sdk","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk","-F","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks","-F","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/PrivateFrameworks","-I","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-L","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-g","-Xcc","-isysroot","-Xcc","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk","-Xcc","-F","-Xcc","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks","-Xcc","-F","-Xcc","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/PrivateFrameworks","-Xcc","-fPIC","-Xcc","-g","-package-name","gpu_renderer"]
+
+  "PackageStructure":
+    tool: package-structure-tool
+    inputs: ["/Users/hazelsudzilouski/Desktop/djs/animation/gpu_renderer/Sources/","/Users/hazelsudzilouski/Desktop/djs/animation/gpu_renderer/Package.swift","/Users/hazelsudzilouski/Desktop/djs/animation/gpu_renderer/Package.resolved"]
+    outputs: ["<PackageStructure>"]
+    description: "Planning build"
+    allow-missing-inputs: true
+
