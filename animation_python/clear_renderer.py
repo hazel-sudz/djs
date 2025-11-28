@@ -321,9 +321,10 @@ class ClearRenderer:
         if wind_mag < 0.01:
             return
 
-        # Wind direction: u=east (right), v=north (up on screen)
+        # Wind direction: u=east (right on screen), v=north
+        # IMPORTANT: Screen coords have Y increasing downward, so negate v
         wu = wind_u / wind_mag
-        wv = wind_v / wind_mag
+        wv = -wind_v / wind_mag  # Negate for screen coordinates (Y-flip)
 
         # Streamline parameters - extends both sides of sensor
         half_length = 80 + wind_speed * 25  # Half the total length (longer)
@@ -426,8 +427,9 @@ class ClearRenderer:
         if wind_mag < 0.01:
             return
 
+        # IMPORTANT: Screen coords have Y increasing downward, so negate v
         wu = wind_u / wind_mag
-        wv = wind_v / wind_mag
+        wv = -wind_v / wind_mag  # Negate for screen coordinates (Y-flip)
 
         # Arrow length based on wind speed
         arrow_len = 50 + wind_speed * 15
@@ -495,9 +497,10 @@ class ClearRenderer:
         if wind_mag < 0.01:
             return
 
-        # Wind components: u=east (right), v=north (up on screen)
+        # Wind components: u=east (right on screen), v=north
+        # IMPORTANT: Screen coords have Y increasing downward, so negate v
         wu = wind_u / wind_mag
-        wv = wind_v / wind_mag
+        wv = -wind_v / wind_mag  # Negate for screen coordinates (Y-flip)
 
         # Plume parameters
         normalized = self.get_log_normalized(pollution)
