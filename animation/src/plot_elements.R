@@ -3,6 +3,17 @@
 # =============================================================================
 # Functions for adding visual elements (pollution circles, wind arrows) to maps.
 
+# Format pollution value for display
+# @param value Numeric pollution value
+# @return Formatted string with units (e.g., "45.2K particles/cm³")
+format_pollution_label <- function(value) {
+  if (value >= 1000) {
+    sprintf("%.1fK", value / 1000)
+  } else {
+    sprintf("%.0f", value)
+  }
+}
+
 # Add pollution circles to a ggplot map
 # @param plot Base ggplot object
 # @param time_data Data for current time point with pollution values
@@ -30,6 +41,32 @@ add_pollution_circles <- function(plot, time_data, pollution_stats) {
       breaks = pollution_stats$breaks,
       limits = c(pollution_stats$min, pollution_stats$max),
       guide = guide_colorbar(barwidth = 1, barheight = 10)
+    )
+}
+
+# Add text labels above pollution circles showing concentration values
+# @param plot ggplot object with pollution circles
+# @param time_data Data for current time point with pollution values
+# @param label_offset Vertical offset for labels (in degrees latitude)
+# @return ggplot object with pollution labels added
+add_pollution_labels <- function(plot, time_data, label_offset = 0.004) {
+  # Create label data with formatted values and offset positions
+  label_data <- time_data %>%
+    mutate(
+      label = sapply(pollution, format_pollution_label),
+      label_y = lat + label_offset
+    )
+
+  plot +
+    geom_label(
+      data = label_data,
+      aes(x = lon, y = label_y, label = label),
+      size = 3.5,
+      fontface = "bold",
+      fill = "white",
+      alpha = 0.85,
+      label.padding = unit(0.2, "lines"),
+      label.size = 0.3
     )
 }
 

@@ -28,6 +28,7 @@ create_single_frame <- function(time_index, current_time, animation_data, wind_s
   frame_plot <- create_base_map(map_extent)
   frame_plot <- add_wind_arrow(frame_plot, wind_data, lon_center, lat_center, map_extent)
   frame_plot <- add_pollution_circles(frame_plot, time_data, pollution_stats)
+  frame_plot <- add_pollution_labels(frame_plot, time_data)
   frame_plot <- add_frame_labels(frame_plot, current_time, title_date)
 
   frame_plot
@@ -48,26 +49,19 @@ save_frame <- function(plot, frame_number, output_dir = "out",
   filename
 }
 
-# Generate all animation frames
+# Generate all animation frames (sequential version)
 # @param processed_data Output from process_data_pipeline()
 # @param sensor_coords Sensor coordinates data frame
 # @param map_extent Map extent list
 # @param output_dir Output directory for frames
 # @param title_date Date string for frame titles
 # @return Vector of generated frame file paths
-generate_all_frames <- function(processed_data, sensor_coords, map_extent,
-                                 output_dir = "out", title_date = "August 1, 2025") {
-  # Ensure output directory exists
-  if (!dir.exists(output_dir)) {
-    dir.create(output_dir, recursive = TRUE)
-    cat("Created output directory:", output_dir, "\n")
-  }
-
+generate_all_frames_sequential <- function(processed_data, sensor_coords, map_extent,
+                                            output_dir = "out", title_date = "August 1, 2025") {
   unique_times <- processed_data$unique_times
   n_frames <- length(unique_times)
 
-  cat("\n=== Frame Generation ===\n")
-  cat("Generating", n_frames, "frames...\n")
+  cat("Generating", n_frames, "frames sequentially...\n")
 
   frame_files <- character(n_frames)
 
@@ -94,6 +88,53 @@ generate_all_frames <- function(processed_data, sensor_coords, map_extent,
     }
   }
 
+  frame_files
+}
+
+# Generate all animation frames (with optional parallel processing)
+# @param processed_data Output from process_data_pipeline()
+# @param sensor_coords Sensor coordinates data frame
+# @param map_extent Map extent list
+# @param output_dir Output directory for frames
+# @param title_date Date string for frame titles
+# @param parallel Use parallel processing (TRUE/FALSE)
+# @param n_cores Number of cores for parallel processing (NULL = auto-detect)
+# @return Vector of generated frame file paths
+generate_all_frames <- function(processed_data, sensor_coords, map_extent,
+                                 output_dir = "out", title_date = "August 1, 2025",
+                                 parallel = TRUE, n_cores = NULL) {
+  # Ensure output directory exists
+  if (!dir.exists(output_dir)) {
+    dir.create(output_dir, recursive = TRUE)
+    cat("Created output directory:", output_dir, "\n")
+  }
+
+  cat("\n=== Frame Generation ===\n")
+
+  if (parallel) {
+    # Use parallel processing
+    frame_files <- generate_frames_parallel(
+      unique_times = processed_data$unique_times,
+      animation_data = processed_data$animation_data,
+      wind_summary = processed_data$wind_summary,
+      sensor_coords = sensor_coords,
+      map_extent = map_extent,
+      pollution_stats = processed_data$pollution_stats,
+      output_dir = output_dir,
+      title_date = title_date,
+      n_cores = n_cores
+    )
+  } else {
+    # Use sequential processing
+    frame_files <- generate_all_frames_sequential(
+      processed_data = processed_data,
+      sensor_coords = sensor_coords,
+      map_extent = map_extent,
+      output_dir = output_dir,
+      title_date = title_date
+    )
+  }
+
   cat("=== Frame Generation Complete ===\n")
   cat("Frames saved to:", output_dir, "\n\n")
 
@@ -109,15 +150,19 @@ generate_all_frames <- function(processed_data, sensor_coords, map_extent,
 # @param seconds_per_frame Duration each frame displays in video
 # @param title_date Date string for frame titles
 # @param cleanup_after Whether to delete frames after video creation
+# @param parallel Use parallel processing for frame generation
+# @param n_cores Number of cores for parallel processing (NULL = auto-detect)
 # @return Path to generated video file
 run_animation_pipeline <- function(data_path = "data/Eastie_UFP.rds",
                                     target_date = "2025-08-01",
                                     sensor_coords,
                                     map_extent,
                                     output_dir = "out",
-                                    seconds_per_frame = 2,
+                                    seconds_per_frame = 1,
                                     title_date = "August 1, 2025",
-                                    cleanup_after = FALSE) {
+                                    cleanup_after = FALSE,
+                                    parallel = TRUE,
+                                    n_cores = NULL) {
   cat("\n")
   cat("============================================================\n")
   cat("       UFP Animation Pipeline\n")
@@ -136,7 +181,9 @@ run_animation_pipeline <- function(data_path = "data/Eastie_UFP.rds",
     sensor_coords = sensor_coords,
     map_extent = map_extent,
     output_dir = output_dir,
-    title_date = title_date
+    title_date = title_date,
+    parallel = parallel,
+    n_cores = n_cores
   )
 
   # Step 3: Create video
