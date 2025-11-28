@@ -22,7 +22,8 @@ packages <- c(
   "scales",
   "ggnewscale",
   "httr",
-  "jsonlite"
+  "jsonlite",
+  "av"
 )
 
 import_packages(packages=packages)

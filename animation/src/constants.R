@@ -1,3 +1,7 @@
+# =============================================================================
+# Constants and Configuration
+# =============================================================================
+# Sensor locations and map extent configuration.
 
 # Define sensor coordinates (lat, lon)
 sensor_coords <- data.frame(
@@ -13,7 +17,7 @@ lon_center <- mean(sensor_coords$lon)
 lat_range <- max(sensor_coords$lat) - min(sensor_coords$lat)
 lon_range <- max(sensor_coords$lon) - min(sensor_coords$lon)
 
-# Add padding (5% of the range or minimum 0.005 degrees) - reduced for tighter zoom
+# Add padding (5% of the range or minimum 0.005 degrees)
 lat_padding <- max(0.005, lat_range * 0.05)
 lon_padding <- max(0.005, lon_range * 0.05)
 
@@ -22,11 +26,20 @@ lat_max <- lat_center + lat_range/2 + lat_padding
 lon_min <- lon_center - lon_range/2 - lon_padding
 lon_max <- lon_center + lon_range/2 + lon_padding
 
-# Print calculated coordinates for debugging
+# Map extent as a list (for use with modular functions)
+map_extent <- list(
+  lat_min = lat_min,
+  lat_max = lat_max,
+  lon_min = lon_min,
+  lon_max = lon_max,
+  lat_center = lat_center,
+  lon_center = lon_center
+)
+
+# Print configuration for debugging
 cat("Sensor coordinates:\n")
 print(sensor_coords)
 cat("\nCalculated map extent:\n")
 cat("Latitude range:", lat_min, "to", lat_max, "\n")
 cat("Longitude range:", lon_min, "to", lon_max, "\n")
 cat("Center point:", lat_center, ",", lon_center, "\n\n")
-

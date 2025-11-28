@@ -1,241 +1,167 @@
-# Load data
-eastie_data <- readRDS("data/Eastie_UFP.rds")
+# =============================================================================
+# Animation Frame Generation
+# =============================================================================
+# Functions for generating individual animation frames and running the full pipeline.
 
-# Filter for August 1st, 2025
-august_first <- as.Date("2025-08-01")
-eastie_data$date <- as.Date(eastie_data$timestamp)
-august_data <- eastie_data %>% 
-  filter(date == august_first) %>%
-  filter(!is.na(cpc_particle_number_conc_corr.x))
-
-cat("Filtered data for August 1st, 2025:\n")
-cat("Total observations:", nrow(august_data), "\n")
-
-if (nrow(august_data) == 0) {
-  stop("No data found for August 1st, 2025. Please check the data file.")
-}
-
-cat("Time range:", as.character(min(august_data$timestamp)), "to", as.character(max(august_data$timestamp)), "\n")
-
-# Remove any existing lat/lon columns from august_data to avoid conflicts
-# (they're likely NA anyway based on the data structure)
-august_data <- august_data %>% 
-  select(-any_of(c("lat", "lon", "geo.lat", "geo.lon")))
-
-# Merge with sensor coordinates using left_join
-sensor_coords_subset <- sensor_coords %>% select(sensor, lat, lon)
-august_data <- august_data %>%
-  left_join(sensor_coords_subset, by = c("sn.x" = "sensor"))
-
-# Remove rows without coordinates
-august_data <- august_data %>% filter(!is.na(lat) & !is.na(lon))
-
-if (nrow(august_data) == 0) {
-  stop("No data with valid coordinates found for August 1st, 2025.")
-}
-
-# Create time groups (every 5 minutes for smoother animation)
-august_data$time_group <- floor_date(august_data$timestamp, "5 minutes")
-
-# Calculate mean pollution and wind for each sensor at each time point
-animation_data <- august_data %>%
-  group_by(time_group, sn.x, lat, lon) %>%
-  summarise(
-    pollution = mean(cpc_particle_number_conc_corr.x, na.rm = TRUE),
-    wind_u = mean(met.wx_u, na.rm = TRUE),
-    wind_v = mean(met.wx_v, na.rm = TRUE),
-    wind_speed = mean(met.wx_ws, na.rm = TRUE),
-    wind_dir = mean(met.wx_wd, na.rm = TRUE),
-    n_obs = n(),
-    .groups = "drop"
-  ) %>%
-  filter(n_obs >= 1)
-
-# Calculate average wind across all sensors for each time point
-wind_summary <- august_data %>%
-  group_by(time_group) %>%
-  summarise(
-    avg_wind_u = mean(met.wx_u, na.rm = TRUE),
-    avg_wind_v = mean(met.wx_v, na.rm = TRUE),
-    avg_wind_speed = mean(met.wx_ws, na.rm = TRUE),
-    avg_wind_dir = mean(met.wx_wd, na.rm = TRUE),
-    .groups = "drop"
-  )
-
-cat("Animation data prepared:", nrow(animation_data), "time-sensor combinations\n")
-cat("Unique time points:", length(unique(animation_data$time_group)), "\n")
-
-# Get pollution range for scaling
-pollution_min <- min(animation_data$pollution, na.rm = TRUE)
-pollution_max <- max(animation_data$pollution, na.rm = TRUE)
-cat("Pollution range:", pollution_min, "to", pollution_max, "particles/cm³\n")
-
-# Calculate legend breaks once (fixes legend rendering issue)
-pollution_breaks <- pretty(c(pollution_min, pollution_max), n = 5)
-cat("Legend breaks:", paste(pollution_breaks, collapse = ", "), "\n")
-
-# Create output directory
-if (!dir.exists("out")) {
-  dir.create("out")
-  cat("Created output directory: out/\n")
-}
-
-# Check if we have animation data
-if (nrow(animation_data) == 0) {
-  stop("No animation data available. Cannot generate frames.")
-}
-
-# Create frames for each time point
-unique_times <- sort(unique(animation_data$time_group))
-cat("\nGenerating", length(unique_times), "frames...\n")
-
-for (i in seq_along(unique_times)) {
-  current_time <- unique_times[i]
+# Generate a single animation frame
+# @param time_index Index of the current time point
+# @param current_time POSIXct timestamp for this frame
+# @param animation_data Full animation dataset
+# @param wind_summary Wind summary dataset
+# @param sensor_coords Sensor coordinates
+# @param map_extent Map extent list (lon_min, lon_max, lat_min, lat_max)
+# @param pollution_stats Pollution statistics for scaling
+# @param title_date Date string for title
+# @return ggplot object for this frame
+create_single_frame <- function(time_index, current_time, animation_data, wind_summary,
+                                 sensor_coords, map_extent, pollution_stats,
+                                 title_date = "August 1, 2025") {
+  # Filter data for current time
   time_data <- animation_data %>% filter(time_group == current_time)
-  
-  # Get average wind data for this time point
   wind_data <- wind_summary %>% filter(time_group == current_time)
-  
-  # Create the map background
-  map_plot <- create_maps_background(
-    sites_data = sensor_coords,
-    long_min = lon_min,
-    long_max = lon_max,
-    lat_min = lat_min,
-    lat_max = lat_max
-  )
-  
-  # Calculate wind arrow length (scale to map size)
-  # Use a fraction of the map range for arrow length
-  map_lat_range <- lat_max - lat_min
-  map_lon_range <- lon_max - lon_min
-  arrow_scale <- min(map_lat_range, map_lon_range) * 0.15  # 15% of smaller dimension
-  
-  # Add wind arrow from center if wind data is available
-  if (nrow(wind_data) > 0 && !is.na(wind_data$avg_wind_u) && !is.na(wind_data$avg_wind_v)) {
-    # Convert wind direction from degrees to radians (meteorological convention: 0° = North, clockwise)
-    # Note: met.wx_wd is in degrees, where 0° is North
-    # For arrow, we need: u is eastward, v is northward
-    # But met.wx_u and met.wx_v are already in the correct coordinate system
-    wind_u <- wind_data$avg_wind_u[1]
-    wind_v <- wind_data$avg_wind_v[1]
-    wind_speed <- wind_data$avg_wind_speed[1]
-    
-    # Normalize and scale the wind vector
-    if (wind_speed > 0 && !is.na(wind_speed)) {
-      # Calculate wind vector magnitude from components
-      wind_magnitude <- sqrt(wind_u^2 + wind_v^2)
-      
-      if (wind_magnitude > 0) {
-        # Scale arrow length based on wind speed (normalize to max expected speed ~6 m/s)
-        max_wind_speed <- 6.0
-        arrow_length <- arrow_scale * min(wind_speed / max_wind_speed, 1.0)  # Cap at max arrow length
-        
-        # Calculate end point of arrow
-        # Note: u is positive eastward, v is positive northward
-        # Normalize the wind vector and scale by arrow length
-        end_lon <- lon_center + (wind_u / wind_magnitude) * arrow_length
-        end_lat <- lat_center + (wind_v / wind_magnitude) * arrow_length
-      } else {
-        end_lon <- lon_center
-        end_lat <- lat_center
-      }
-      
-      # Create arrow data
-      arrow_df <- data.frame(
-        x = lon_center,
-        y = lat_center,
-        xend = end_lon,
-        yend = end_lat
-      )
-      
-      # Add wind arrow to plot
-      map_plot <- map_plot +
-        geom_segment(
-          data = arrow_df,
-          aes(x = x, y = y, xend = xend, yend = yend),
-          arrow = arrow(length = unit(0.3, "cm"), type = "closed"),
-          color = "darkblue",
-          linewidth = 2,
-          alpha = 0.8
-        ) +
-        geom_point(
-          data = data.frame(x = lon_center, y = lat_center),
-          aes(x = x, y = y),
-          color = "darkblue",
-          size = 3,
-          shape = 21,
-          fill = "white",
-          stroke = 2
-        )
-    } else {
-      # If no wind speed, just show center point
-      map_plot <- map_plot +
-        geom_point(
-          data = data.frame(x = lon_center, y = lat_center),
-          aes(x = x, y = y),
-          color = "darkblue",
-          size = 3,
-          shape = 21,
-          fill = "white",
-          stroke = 2
-        )
+
+  # Calculate map center
+  lon_center <- (map_extent$lon_min + map_extent$lon_max) / 2
+  lat_center <- (map_extent$lat_min + map_extent$lat_max) / 2
+
+  # Build the frame layer by layer
+  frame_plot <- create_base_map(map_extent)
+  frame_plot <- add_wind_arrow(frame_plot, wind_data, lon_center, lat_center, map_extent)
+  frame_plot <- add_pollution_circles(frame_plot, time_data, pollution_stats)
+  frame_plot <- add_frame_labels(frame_plot, current_time, title_date)
+
+  frame_plot
+}
+
+# Save a frame to disk
+# @param plot ggplot object
+# @param frame_number Frame number for filename
+# @param output_dir Output directory
+# @param width Plot width in inches
+# @param height Plot height in inches
+# @param dpi Resolution in DPI
+# @return Path to saved file
+save_frame <- function(plot, frame_number, output_dir = "out",
+                        width = 12, height = 8, dpi = 150) {
+  filename <- sprintf("%s/frame_%04d.png", output_dir, frame_number)
+  ggsave(filename, plot = plot, width = width, height = height, dpi = dpi)
+  filename
+}
+
+# Generate all animation frames
+# @param processed_data Output from process_data_pipeline()
+# @param sensor_coords Sensor coordinates data frame
+# @param map_extent Map extent list
+# @param output_dir Output directory for frames
+# @param title_date Date string for frame titles
+# @return Vector of generated frame file paths
+generate_all_frames <- function(processed_data, sensor_coords, map_extent,
+                                 output_dir = "out", title_date = "August 1, 2025") {
+  # Ensure output directory exists
+  if (!dir.exists(output_dir)) {
+    dir.create(output_dir, recursive = TRUE)
+    cat("Created output directory:", output_dir, "\n")
+  }
+
+  unique_times <- processed_data$unique_times
+  n_frames <- length(unique_times)
+
+  cat("\n=== Frame Generation ===\n")
+  cat("Generating", n_frames, "frames...\n")
+
+  frame_files <- character(n_frames)
+
+  for (i in seq_along(unique_times)) {
+    current_time <- unique_times[i]
+
+    # Create and save frame
+    frame_plot <- create_single_frame(
+      time_index = i,
+      current_time = current_time,
+      animation_data = processed_data$animation_data,
+      wind_summary = processed_data$wind_summary,
+      sensor_coords = sensor_coords,
+      map_extent = map_extent,
+      pollution_stats = processed_data$pollution_stats,
+      title_date = title_date
+    )
+
+    frame_files[i] <- save_frame(frame_plot, i, output_dir)
+
+    # Progress reporting
+    if (i %% 10 == 0 || i == n_frames) {
+      cat("Progress:", i, "/", n_frames, "frames completed\n")
     }
   }
-  
-  # Add pollution circles with color and size based on pollution level
-  # Add circles to the plot
-  map_plot <- map_plot +
-    geom_point(
-      data = time_data,
-      aes(x = lon, y = lat, 
-          size = pollution, 
-          color = pollution),
-      alpha = 0.7
-    ) +
-    scale_size_continuous(
-      name = "UFP Concentration\n(particles/cm³)",
-      range = c(2, 15),
-      breaks = pollution_breaks,
-      limits = c(pollution_min, pollution_max),
-      guide = guide_legend(override.aes = list(alpha = 0.7, color = "gray50"))
-    ) +
-    scale_color_viridis_c(
-      name = "UFP Concentration\n(particles/cm³)",
-      option = "plasma",
-      breaks = pollution_breaks,
-      limits = c(pollution_min, pollution_max),
-      guide = guide_colorbar(barwidth = 1, barheight = 10)
-    ) +
-    labs(
-      title = paste("Ultrafine Particle Concentration - August 1, 2025"),
-      subtitle = paste("Time:", format(current_time, "%H:%M:%S")),
-      x = "Longitude",
-      y = "Latitude"
-    ) +
-    theme(
-      plot.title = element_text(size = 14, face = "bold", hjust = 0.5),
-      plot.subtitle = element_text(size = 12, hjust = 0.5),
-      legend.position = "right",
-      legend.box = "vertical",
-      legend.title = element_text(size = 10, face = "bold"),
-      legend.text = element_text(size = 9)
-    )
-  
-  # Save frame
-  frame_filename <- sprintf("out/frame_%04d.png", i)
-  ggsave(
-    frame_filename,
-    plot = map_plot,
-    width = 12,
-    height = 8,
-    dpi = 150  # Good quality for animation frames
-  )
-  
-  if (i %% 10 == 0 || i == length(unique_times)) {
-    cat("Progress: ", i, "/", length(unique_times), " frames completed\n")
-  }
+
+  cat("=== Frame Generation Complete ===\n")
+  cat("Frames saved to:", output_dir, "\n\n")
+
+  frame_files
 }
 
-cat("\nAnimation frames saved to out/ folder\n")
-cat("Total frames:", length(unique_times), "\n")
+# Run the complete animation pipeline (data -> frames -> video)
+# @param data_path Path to RDS data file
+# @param target_date Date to animate
+# @param sensor_coords Sensor coordinates data frame
+# @param map_extent Map extent list
+# @param output_dir Output directory
+# @param seconds_per_frame Duration each frame displays in video
+# @param title_date Date string for frame titles
+# @param cleanup_after Whether to delete frames after video creation
+# @return Path to generated video file
+run_animation_pipeline <- function(data_path = "data/Eastie_UFP.rds",
+                                    target_date = "2025-08-01",
+                                    sensor_coords,
+                                    map_extent,
+                                    output_dir = "out",
+                                    seconds_per_frame = 2,
+                                    title_date = "August 1, 2025",
+                                    cleanup_after = FALSE) {
+  cat("\n")
+  cat("============================================================\n")
+  cat("       UFP Animation Pipeline\n")
+  cat("============================================================\n")
+
+  # Step 1: Process data
+  processed_data <- process_data_pipeline(
+    data_path = data_path,
+    target_date = target_date,
+    sensor_coords = sensor_coords
+  )
+
+  # Step 2: Generate frames
+  frame_files <- generate_all_frames(
+    processed_data = processed_data,
+    sensor_coords = sensor_coords,
+    map_extent = map_extent,
+    output_dir = output_dir,
+    title_date = title_date
+  )
+
+  # Step 3: Create video
+  video_file <- file.path(output_dir, "animation.mp4")
+  frame_rate <- seconds_to_framerate(seconds_per_frame)
+
+  # Print duration info
+  duration_info <- get_video_duration_info(length(frame_files), seconds_per_frame)
+  cat("Video duration:", duration_info, "\n")
+
+  create_video_from_frames(
+    frames_dir = output_dir,
+    output_file = video_file,
+    frame_rate = frame_rate
+  )
+
+  # Optional cleanup
+  if (cleanup_after) {
+    cleanup_frames(output_dir)
+  }
+
+  cat("============================================================\n")
+  cat("       Pipeline Complete!\n")
+  cat("============================================================\n")
+  cat("Video saved to:", video_file, "\n\n")
+
+  video_file
+}
