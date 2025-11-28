@@ -37,15 +37,30 @@ if (nrow(august_data) == 0) {
 # Create time groups (every 5 minutes for smoother animation)
 august_data$time_group <- floor_date(august_data$timestamp, "5 minutes")
 
-# Calculate mean pollution for each sensor at each time point
+# Calculate mean pollution and wind for each sensor at each time point
 animation_data <- august_data %>%
   group_by(time_group, sn.x, lat, lon) %>%
   summarise(
     pollution = mean(cpc_particle_number_conc_corr.x, na.rm = TRUE),
+    wind_u = mean(met.wx_u, na.rm = TRUE),
+    wind_v = mean(met.wx_v, na.rm = TRUE),
+    wind_speed = mean(met.wx_ws, na.rm = TRUE),
+    wind_dir = mean(met.wx_wd, na.rm = TRUE),
     n_obs = n(),
     .groups = "drop"
   ) %>%
   filter(n_obs >= 1)
+
+# Calculate average wind across all sensors for each time point
+wind_summary <- august_data %>%
+  group_by(time_group) %>%
+  summarise(
+    avg_wind_u = mean(met.wx_u, na.rm = TRUE),
+    avg_wind_v = mean(met.wx_v, na.rm = TRUE),
+    avg_wind_speed = mean(met.wx_ws, na.rm = TRUE),
+    avg_wind_dir = mean(met.wx_wd, na.rm = TRUE),
+    .groups = "drop"
+  )
 
 cat("Animation data prepared:", nrow(animation_data), "time-sensor combinations\n")
 cat("Unique time points:", length(unique(animation_data$time_group)), "\n")
@@ -54,6 +69,10 @@ cat("Unique time points:", length(unique(animation_data$time_group)), "\n")
 pollution_min <- min(animation_data$pollution, na.rm = TRUE)
 pollution_max <- max(animation_data$pollution, na.rm = TRUE)
 cat("Pollution range:", pollution_min, "to", pollution_max, "particles/cm³\n")
+
+# Calculate legend breaks once (fixes legend rendering issue)
+pollution_breaks <- pretty(c(pollution_min, pollution_max), n = 5)
+cat("Legend breaks:", paste(pollution_breaks, collapse = ", "), "\n")
 
 # Create output directory
 if (!dir.exists("out")) {
@@ -74,6 +93,9 @@ for (i in seq_along(unique_times)) {
   current_time <- unique_times[i]
   time_data <- animation_data %>% filter(time_group == current_time)
   
+  # Get average wind data for this time point
+  wind_data <- wind_summary %>% filter(time_group == current_time)
+  
   # Create the map background
   map_plot <- create_maps_background(
     sites_data = sensor_coords,
@@ -82,6 +104,84 @@ for (i in seq_along(unique_times)) {
     lat_min = lat_min,
     lat_max = lat_max
   )
+  
+  # Calculate wind arrow length (scale to map size)
+  # Use a fraction of the map range for arrow length
+  map_lat_range <- lat_max - lat_min
+  map_lon_range <- lon_max - lon_min
+  arrow_scale <- min(map_lat_range, map_lon_range) * 0.15  # 15% of smaller dimension
+  
+  # Add wind arrow from center if wind data is available
+  if (nrow(wind_data) > 0 && !is.na(wind_data$avg_wind_u) && !is.na(wind_data$avg_wind_v)) {
+    # Convert wind direction from degrees to radians (meteorological convention: 0° = North, clockwise)
+    # Note: met.wx_wd is in degrees, where 0° is North
+    # For arrow, we need: u is eastward, v is northward
+    # But met.wx_u and met.wx_v are already in the correct coordinate system
+    wind_u <- wind_data$avg_wind_u[1]
+    wind_v <- wind_data$avg_wind_v[1]
+    wind_speed <- wind_data$avg_wind_speed[1]
+    
+    # Normalize and scale the wind vector
+    if (wind_speed > 0 && !is.na(wind_speed)) {
+      # Calculate wind vector magnitude from components
+      wind_magnitude <- sqrt(wind_u^2 + wind_v^2)
+      
+      if (wind_magnitude > 0) {
+        # Scale arrow length based on wind speed (normalize to max expected speed ~6 m/s)
+        max_wind_speed <- 6.0
+        arrow_length <- arrow_scale * min(wind_speed / max_wind_speed, 1.0)  # Cap at max arrow length
+        
+        # Calculate end point of arrow
+        # Note: u is positive eastward, v is positive northward
+        # Normalize the wind vector and scale by arrow length
+        end_lon <- lon_center + (wind_u / wind_magnitude) * arrow_length
+        end_lat <- lat_center + (wind_v / wind_magnitude) * arrow_length
+      } else {
+        end_lon <- lon_center
+        end_lat <- lat_center
+      }
+      
+      # Create arrow data
+      arrow_df <- data.frame(
+        x = lon_center,
+        y = lat_center,
+        xend = end_lon,
+        yend = end_lat
+      )
+      
+      # Add wind arrow to plot
+      map_plot <- map_plot +
+        geom_segment(
+          data = arrow_df,
+          aes(x = x, y = y, xend = xend, yend = yend),
+          arrow = arrow(length = unit(0.3, "cm"), type = "closed"),
+          color = "darkblue",
+          linewidth = 2,
+          alpha = 0.8
+        ) +
+        geom_point(
+          data = data.frame(x = lon_center, y = lat_center),
+          aes(x = x, y = y),
+          color = "darkblue",
+          size = 3,
+          shape = 21,
+          fill = "white",
+          stroke = 2
+        )
+    } else {
+      # If no wind speed, just show center point
+      map_plot <- map_plot +
+        geom_point(
+          data = data.frame(x = lon_center, y = lat_center),
+          aes(x = x, y = y),
+          color = "darkblue",
+          size = 3,
+          shape = 21,
+          fill = "white",
+          stroke = 2
+        )
+    }
+  }
   
   # Add pollution circles with color and size based on pollution level
   # Add circles to the plot
@@ -96,13 +196,15 @@ for (i in seq_along(unique_times)) {
     scale_size_continuous(
       name = "UFP Concentration\n(particles/cm³)",
       range = c(2, 15),
-      breaks = pretty(c(pollution_min, pollution_max), n = 5),
-      guide = guide_legend(override.aes = list(alpha = 0.7))
+      breaks = pollution_breaks,
+      limits = c(pollution_min, pollution_max),
+      guide = guide_legend(override.aes = list(alpha = 0.7, color = "gray50"))
     ) +
     scale_color_viridis_c(
       name = "UFP Concentration\n(particles/cm³)",
       option = "plasma",
-      breaks = pretty(c(pollution_min, pollution_max), n = 5),
+      breaks = pollution_breaks,
+      limits = c(pollution_min, pollution_max),
       guide = guide_colorbar(barwidth = 1, barheight = 10)
     ) +
     labs(

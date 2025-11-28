@@ -3,3 +3,4 @@
 *.RData
 planes/data
 **/rosm.cache/**
+**/out/**
