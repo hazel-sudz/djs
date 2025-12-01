@@ -314,6 +314,54 @@ class Renderer:
         CGContextClosePath(ctx)
         CGContextStrokePath(ctx)
 
+    def draw_average_wind(self, ctx, sensors):
+        """Draw average wind indicator in center of map."""
+        if not sensors:
+            return
+
+        # Calculate vector average of wind directions
+        u_sum, v_sum, speed_sum = 0, 0, 0
+        count = 0
+        for sensor in sensors:
+            lon, lat, pollution, wind_dir, wind_speed = sensor
+            if wind_speed > 0.1:
+                # Convert to radians (meteorological: 0=N, 90=E)
+                rad = math.radians(wind_dir)
+                u_sum += wind_speed * math.sin(rad)
+                v_sum += wind_speed * math.cos(rad)
+                speed_sum += wind_speed
+                count += 1
+
+        if count == 0:
+            return
+
+        # Average direction (where wind comes FROM)
+        avg_dir = math.degrees(math.atan2(u_sum, v_sum)) % 360
+        avg_speed = speed_sum / count
+
+        # Center of map
+        center_x = self.map_x + self.map_width / 2
+        center_y = self.map_y + self.map_height / 2
+
+        # Draw background circle
+        bg_radius = 45
+        CGContextSetFillColorWithColor(ctx, self.create_color(1, 1, 1, 0.85))
+        CGContextAddEllipseInRect(ctx, CGRectMake(center_x - bg_radius, center_y - bg_radius,
+                                                   bg_radius * 2, bg_radius * 2))
+        CGContextFillPath(ctx)
+        CGContextSetStrokeColorWithColor(ctx, self.create_color(0.3, 0.3, 0.3, 0.8))
+        CGContextSetLineWidth(ctx, 2)
+        CGContextAddEllipseInRect(ctx, CGRectMake(center_x - bg_radius, center_y - bg_radius,
+                                                   bg_radius * 2, bg_radius * 2))
+        CGContextStrokePath(ctx)
+
+        # Draw wind arrow from center
+        self.draw_wind_arrow(ctx, center_x, center_y, avg_dir, avg_speed, bg_radius)
+
+        # Label
+        self.draw_label(ctx, "Avg Wind", center_x, center_y + bg_radius + 16,
+                       font_size=10, bold=True, bg_color=self.create_color(1, 1, 1, 0.85))
+
     def render_frame(self, frame) -> bytes:
         """Render a single frame."""
         ctx = CGBitmapContextCreate(
@@ -373,6 +421,9 @@ class Renderer:
             label = f"{pollution/1000:.1f}K" if pollution >= 1000 else f"{pollution:.0f}"
             self.draw_label(ctx, label, pos[0], pos[1] + size/2 + 14,
                            font_size=10, bold=True, bg_color=self.create_color(1, 1, 1, 0.85))
+
+        # Draw average wind indicator in center
+        self.draw_average_wind(ctx, frame.sensors)
 
         # Title
         self.draw_title(ctx, frame.date_label, frame.time_label)
