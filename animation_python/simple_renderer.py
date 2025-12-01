@@ -150,11 +150,13 @@ class SimpleRenderer:
                    bold: bool = True, bg_color=None, padding: float = 4, centered: bool = True):
         """Draw text label with optional background."""
         from CoreText import CTFontCreateWithName, CTLineCreateWithAttributedString, CTLineDraw, CTLineGetBoundsWithOptions, kCTFontAttributeName, kCTForegroundColorFromContextAttributeName
+        from Foundation import NSAttributedString
+        from Quartz import CGContextSetTextMatrix, CGAffineTransformMake
 
         font_name = "Helvetica-Bold" if bold else "Helvetica"
         font = CTFontCreateWithName(font_name, font_size, None)
         attrs = {kCTFontAttributeName: font, kCTForegroundColorFromContextAttributeName: True}
-        attr_string = CoreFoundation.CFAttributedStringCreate(None, text, attrs)
+        attr_string = NSAttributedString.alloc().initWithString_attributes_(text, attrs)
         line = CTLineCreateWithAttributedString(attr_string)
         bounds = CTLineGetBoundsWithOptions(line, 0)
 
@@ -176,7 +178,7 @@ class SimpleRenderer:
 
         CGContextSetFillColorWithColor(ctx, self.create_color(0.15, 0.15, 0.15))
         CGContextSaveGState(ctx)
-        Quartz.CGContextSetTextPosition(ctx, text_x, text_y)
+        CGContextSetTextMatrix(ctx, CGAffineTransformMake(1.0, 0.0, 0.0, 1.0, text_x, text_y))
         CTLineDraw(line, ctx)
         CGContextRestoreGState(ctx)
 
