@@ -21,6 +21,9 @@ from Quartz import (
     CGContextSetStrokeColorWithColor,
     CGContextSetLineWidth,
     CGContextSetLineCap,
+    CGContextSetLineJoin,
+    CGContextBeginPath,
+    CGContextClosePath,
     CGContextMoveToPoint,
     CGContextAddLineToPoint,
     CGContextStrokePath,
@@ -37,6 +40,7 @@ from Quartz import (
     CGImageDestinationAddImage,
     CGImageDestinationFinalize,
     kCGLineCapRound,
+    kCGLineJoinRound,
     kCGInterpolationHigh,
     CGColorCreate,
     CGRectMake,
@@ -141,7 +145,7 @@ class Renderer:
         # Normalize to visual range, not data range
         norm = (pollution - self.POLLUTION_VIS_MIN) / (self.POLLUTION_VIS_MAX - self.POLLUTION_VIS_MIN)
         norm = max(0, min(1, norm))
-        return 35 + norm * 50  # 35-85 pixels (bigger circles)
+        return 80 + norm * 120  # 80-200 pixels (bigger circles)
 
     def draw_label(self, ctx, text: str, x: float, y: float, font_size: float = 12,
                    bold: bool = True, bg_color=None, padding: float = 4, centered: bool = True):
@@ -243,61 +247,71 @@ class Renderer:
         CGContextAddLineToPoint(ctx, arrow_x + 28, arrow_y + 5)
         CGContextStrokePath(ctx)
 
-    def draw_wind_arrow(self, ctx, x: float, y: float, wind_dir: float, wind_speed: float):
+    def draw_wind_arrow(self, ctx, x: float, y: float, wind_dir: float, wind_speed: float, circle_radius: float = 0):
         """
-        Draw wind arrow from sensor position.
-
-        wind_dir: meteorological direction (where wind comes FROM), 0=N, 90=E
-        Arrow points in direction wind is going TO.
+        Draw wind as a clean cone starting from edge of pollution circle.
         """
-        if wind_speed < 0.1:  # Skip calm winds
+        if wind_speed < 0.1:
             return
 
-        # Convert meteorological direction (FROM) to mathematical angle (TO)
-        # Meteorological: 0=N, 90=E, 180=S, 270=W (where wind comes FROM)
-        # We want arrow pointing where wind goes TO, so add 180
+        # Convert meteorological direction to angle
         to_dir = (wind_dir + 180) % 360
-
-        # Convert to radians (mathematical: 0=E, 90=N)
-        # In our coordinate system: 0=right, 90=up
         angle_rad = math.radians(90 - to_dir)
 
-        # Arrow length based on wind speed (normalized to 0-4 m/s range)
+        # Cone dimensions based on wind speed
         norm_speed = min(1, max(0, wind_speed / self.WIND_SPEED_MAX))
-        min_len, max_len = 50, 120  # Bigger arrows
-        arrow_len = min_len + norm_speed * (max_len - min_len)
+        cone_length = 80 + norm_speed * 60  # 80-140px (shorter, cleaner)
+        base_width = 16 + norm_speed * 8  # 16-24px at base
 
-        # Calculate arrow endpoint
-        dx = arrow_len * math.cos(angle_rad)
-        dy = arrow_len * math.sin(angle_rad)
-        end_x = x + dx
-        end_y = y + dy
+        # Start from edge of circle (with small gap)
+        gap = 8
+        start_x = x + (circle_radius + gap) * math.cos(angle_rad)
+        start_y = y + (circle_radius + gap) * math.sin(angle_rad)
 
-        # Arrow color - blue, more visible
-        alpha = 0.6 + 0.35 * norm_speed
-        arrow_color = self.create_color(0.15, 0.35, 0.75, alpha)
+        # Calculate tip position
+        tip_x = start_x + cone_length * math.cos(angle_rad)
+        tip_y = start_y + cone_length * math.sin(angle_rad)
 
-        # Draw arrow shaft - thicker
-        CGContextSetStrokeColorWithColor(ctx, arrow_color)
-        CGContextSetLineWidth(ctx, 3.5)
-        CGContextSetLineCap(ctx, kCGLineCapRound)
-        CGContextMoveToPoint(ctx, x, y)
-        CGContextAddLineToPoint(ctx, end_x, end_y)
-        CGContextStrokePath(ctx)
+        # Perpendicular for base width
+        perp_angle = angle_rad + math.pi / 2
 
-        # Draw arrowhead - bigger
-        head_len = 14
-        head_angle = 0.45  # radians
+        # Base corners
+        base1_x = start_x + (base_width / 2) * math.cos(perp_angle)
+        base1_y = start_y + (base_width / 2) * math.sin(perp_angle)
+        base2_x = start_x - (base_width / 2) * math.cos(perp_angle)
+        base2_y = start_y - (base_width / 2) * math.sin(perp_angle)
 
-        head_angle1 = angle_rad + math.pi - head_angle
-        head_angle2 = angle_rad + math.pi + head_angle
+        # === Subtle Drop Shadow ===
+        shadow_offset = 3
+        shadow_color = self.create_color(0, 0, 0, 0.2)
+        CGContextSetFillColorWithColor(ctx, shadow_color)
+        CGContextBeginPath(ctx)
+        CGContextMoveToPoint(ctx, base1_x + shadow_offset, base1_y - shadow_offset)
+        CGContextAddLineToPoint(ctx, tip_x + shadow_offset, tip_y - shadow_offset)
+        CGContextAddLineToPoint(ctx, base2_x + shadow_offset, base2_y - shadow_offset)
+        CGContextClosePath(ctx)
+        CGContextFillPath(ctx)
 
-        CGContextSetLineWidth(ctx, 3.0)
-        CGContextMoveToPoint(ctx, end_x + head_len * math.cos(head_angle1),
-                             end_y + head_len * math.sin(head_angle1))
-        CGContextAddLineToPoint(ctx, end_x, end_y)
-        CGContextAddLineToPoint(ctx, end_x + head_len * math.cos(head_angle2),
-                                end_y + head_len * math.sin(head_angle2))
+        # === Main Cone - solid clean fill ===
+        cone_color = self.create_color(0.2, 0.4, 0.7, 0.85)
+        CGContextSetFillColorWithColor(ctx, cone_color)
+        CGContextBeginPath(ctx)
+        CGContextMoveToPoint(ctx, base1_x, base1_y)
+        CGContextAddLineToPoint(ctx, tip_x, tip_y)
+        CGContextAddLineToPoint(ctx, base2_x, base2_y)
+        CGContextClosePath(ctx)
+        CGContextFillPath(ctx)
+
+        # === Clean white border ===
+        border_color = self.create_color(1, 1, 1, 0.9)
+        CGContextSetStrokeColorWithColor(ctx, border_color)
+        CGContextSetLineWidth(ctx, 2)
+        CGContextSetLineJoin(ctx, kCGLineJoinRound)
+        CGContextBeginPath(ctx)
+        CGContextMoveToPoint(ctx, base1_x, base1_y)
+        CGContextAddLineToPoint(ctx, tip_x, tip_y)
+        CGContextAddLineToPoint(ctx, base2_x, base2_y)
+        CGContextClosePath(ctx)
         CGContextStrokePath(ctx)
 
     def render_frame(self, frame) -> bytes:
@@ -326,13 +340,7 @@ class Renderer:
             CGContextDrawImage(ctx, CGRectMake(self.map_x, self.map_y, self.map_width, self.map_height),
                              self.base_map_image)
 
-        # Draw wind arrows first (behind circles)
-        for sensor in frame.sensors:
-            lon, lat, pollution, wind_dir, wind_speed = sensor
-            pos = self.geo_to_pixel(lon, lat)
-            self.draw_wind_arrow(ctx, pos[0], pos[1], wind_dir, wind_speed)
-
-        # Draw sensor circles
+        # Draw sensor circles first
         for sensor in frame.sensors:
             lon, lat, pollution, wind_dir, wind_speed = sensor
             pos = self.geo_to_pixel(lon, lat)
@@ -340,17 +348,28 @@ class Renderer:
             color = self.get_plasma_color(pollution)
 
             # Main circle
-            CGContextSetFillColorWithColor(ctx, self.create_color(*color, 0.85))
+            CGContextSetFillColorWithColor(ctx, self.create_color(*color, 0.9))
             CGContextAddEllipseInRect(ctx, CGRectMake(pos[0] - size/2, pos[1] - size/2, size, size))
             CGContextFillPath(ctx)
 
             # Circle border
             CGContextSetStrokeColorWithColor(ctx, self.create_color(*color, 1.0))
-            CGContextSetLineWidth(ctx, 2)
+            CGContextSetLineWidth(ctx, 2.5)
             CGContextAddEllipseInRect(ctx, CGRectMake(pos[0] - size/2, pos[1] - size/2, size, size))
             CGContextStrokePath(ctx)
 
-            # Pollution label
+        # Draw wind arrows on top (starting from edge of circles)
+        for sensor in frame.sensors:
+            lon, lat, pollution, wind_dir, wind_speed = sensor
+            pos = self.geo_to_pixel(lon, lat)
+            circle_size = self.get_circle_size(pollution)
+            self.draw_wind_arrow(ctx, pos[0], pos[1], wind_dir, wind_speed, circle_size / 2)
+
+        # Draw pollution labels on top
+        for sensor in frame.sensors:
+            lon, lat, pollution, wind_dir, wind_speed = sensor
+            pos = self.geo_to_pixel(lon, lat)
+            size = self.get_circle_size(pollution)
             label = f"{pollution/1000:.1f}K" if pollution >= 1000 else f"{pollution:.0f}"
             self.draw_label(ctx, label, pos[0], pos[1] + size/2 + 14,
                            font_size=10, bold=True, bg_color=self.create_color(1, 1, 1, 0.85))

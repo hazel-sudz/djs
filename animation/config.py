@@ -32,7 +32,7 @@ SENSOR_COORDS = [
 ]
 
 # Calculate map extent from sensor coordinates
-def calculate_map_extent(sensors: list[SensorCoord], padding: float = 0.005) -> MapExtent:
+def calculate_map_extent(sensors: list[SensorCoord], padding: float = 0.015) -> MapExtent:
     lats = [s.lat for s in sensors]
     lons = [s.lon for s in sensors]
 
