@@ -99,9 +99,6 @@ class Renderer:
         pil_image = Image.open(path).convert('RGBA')
         pil_image = pil_image.resize((self.map_width, self.map_height), Image.LANCZOS)
 
-        # Flip vertically for Core Graphics coordinate system
-        pil_image = pil_image.transpose(Image.FLIP_TOP_BOTTOM)
-
         data = pil_image.tobytes()
         provider = Quartz.CGDataProviderCreateWithData(None, data, len(data), None)
         self.base_map_image = Quartz.CGImageCreate(
@@ -122,7 +119,8 @@ class Renderer:
         x_ratio = (lon - self.map_extent.lon_min) / (self.map_extent.lon_max - self.map_extent.lon_min)
         y_ratio = (lat - self.map_extent.lat_min) / (self.map_extent.lat_max - self.map_extent.lat_min)
         px = self.map_x + x_ratio * self.map_width
-        py = self.map_y + y_ratio * self.map_height
+        # Invert y since image has y=0 at top but lat increases northward
+        py = self.map_y + self.map_height - y_ratio * self.map_height
         return (px, py)
 
     def get_plasma_color(self, pollution: float) -> tuple:
