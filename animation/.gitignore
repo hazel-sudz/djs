@@ -1,8 +1,5 @@
-# Output directories
-out/
-out_all_days/
-out_improved/
-out_clear/
+# Output
+output/
 
 # Tile cache
 .tile_cache/

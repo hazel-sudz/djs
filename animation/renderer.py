@@ -1,10 +1,9 @@
 """
-Simple GPU-accelerated renderer with per-sensor wind vectors.
+GPU-accelerated renderer using macOS Quartz/CoreGraphics.
 
 Features:
 - Pollution circles (size + color)
 - Wind direction arrows from each sensor
-- No gradient interpolation
 """
 
 import math
@@ -48,7 +47,7 @@ from PIL import Image
 import numpy as np
 
 
-class SimpleRenderer:
+class Renderer:
     """Simple GPU-accelerated frame renderer with wind vectors."""
 
     HEADER_HEIGHT = 90
@@ -91,7 +90,7 @@ class SimpleRenderer:
         self.map_width = width - self.LEFT_MARGIN - self.RIGHT_MARGIN
         self.map_height = height - self.HEADER_HEIGHT - self.FOOTER_HEIGHT
 
-        print(f"Simple Renderer initialized")
+        print(f"Renderer initialized")
         print(f"  Resolution: {width}x{height}")
         print(f"  Map area: {self.map_width}x{self.map_height}")
 

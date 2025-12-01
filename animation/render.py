@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Render UFP animation with simple visualization - all days in one video.
+Render UFP animation - all days in one video.
 
 Features:
 - Pollution circles (size + color)
@@ -8,8 +8,8 @@ Features:
 - Single combined video for all days
 
 Usage:
-    uv run python render_simple.py
-    uv run python render_simple.py --days 2025-08-01 2025-08-02
+    uv run python render.py
+    uv run python render.py --days 2025-08-01 2025-08-02
 """
 
 import argparse
@@ -21,8 +21,8 @@ import pandas as pd
 from config import MAP_EXTENT, SENSOR_COORDS
 from data_loader import load_rds_data
 from map_tiles import create_base_map
-from simple_processing import process_day_simple, get_pollution_stats
-from simple_renderer import SimpleRenderer
+from processing import process_day, get_pollution_stats
+from renderer import Renderer
 
 
 def get_available_dates(df: pd.DataFrame) -> list:
@@ -38,7 +38,7 @@ def get_global_pollution_stats(df: pd.DataFrame, dates: list, sensor_coords: lis
     all_pollution = []
 
     for date in dates:
-        frames = process_day_simple(df, date, sensor_coords)
+        frames = process_day(df, date, sensor_coords)
         for frame in frames:
             for sensor in frame.sensors:
                 all_pollution.append(sensor[2])
@@ -87,9 +87,9 @@ def create_video(frame_dir: str, output_file: str, frame_rate: float = 2.0):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Render simple UFP animation")
+    parser = argparse.ArgumentParser(description="Render UFP animation")
     parser.add_argument("--data", default="data/Eastie_UFP.rds", help="Path to RDS data")
-    parser.add_argument("--output", default="out_simple", help="Output directory")
+    parser.add_argument("--output", default="output", help="Output directory")
     parser.add_argument("--days", nargs="*", help="Specific days to render (YYYY-MM-DD)")
     parser.add_argument("--width", type=int, default=1800, help="Frame width")
     parser.add_argument("--height", type=int, default=1200, help="Frame height")
@@ -97,7 +97,7 @@ def main():
     args = parser.parse_args()
 
     print("\n" + "="*60)
-    print("  UFP Animation - Simple Visualization")
+    print("  UFP Animation Renderer")
     print("="*60)
     print("Features:")
     print("  • Pollution circles (size + color)")
@@ -143,7 +143,7 @@ def main():
     print(f"  Range: {stats['min']:.0f} - {stats['max']:.0f}")
 
     # Create renderer
-    renderer = SimpleRenderer(
+    renderer = Renderer(
         width=args.width, height=args.height,
         map_extent=MAP_EXTENT,
         pollution_min=stats['min'],
@@ -162,7 +162,7 @@ def main():
     for date in dates:
         print(f"\n  {date}...")
 
-        frames = process_day_simple(df, date, SENSOR_COORDS)
+        frames = process_day(df, date, SENSOR_COORDS)
 
         if len(frames) == 0:
             print(f"    No frames, skipping")

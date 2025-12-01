@@ -1,8 +1,7 @@
 """
-Simple data processing for pollution visualization with per-sensor wind vectors.
+Data processing for pollution visualization with per-sensor wind vectors.
 
-Uses wind direction (wd) and speed (ws) directly instead of u/v components.
-No spatial interpolation - just sensor-level data.
+Uses wind direction (wd) and speed (ws) directly.
 """
 
 import pandas as pd
@@ -11,8 +10,8 @@ from typing import NamedTuple, Optional
 import math
 
 
-class SimpleFrameData(NamedTuple):
-    """Simple frame data with sensor pollution and wind vectors."""
+class FrameData(NamedTuple):
+    """Frame data with sensor pollution and wind vectors."""
     timestamp: pd.Timestamp
     date_label: str
     time_label: str
@@ -86,14 +85,14 @@ def smooth_wind_direction(times: np.ndarray, directions: np.ndarray,
     return smoothed
 
 
-def process_day_simple(df: pd.DataFrame, target_date: str, sensor_coords: list,
+def process_day(df: pd.DataFrame, target_date: str, sensor_coords: list,
                        frame_interval_minutes: float = 5.0,
                        smoothing_sigma_minutes: float = 10.0) -> list:
     """
     Process a day's data with simple sensor-level analysis.
 
     Returns:
-        List of SimpleFrameData objects
+        List of FrameData objects
     """
     # Filter to target date
     target = pd.to_datetime(target_date).date()
@@ -222,7 +221,7 @@ def process_day_simple(df: pd.DataFrame, target_date: str, sensor_coords: list,
         if len(sensors_list) == 0:
             continue
 
-        frames.append(SimpleFrameData(
+        frames.append(FrameData(
             timestamp=frame_time,
             date_label=date_label,
             time_label=frame_time.strftime("%H:%M"),
