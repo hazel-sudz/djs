@@ -400,7 +400,7 @@ class EnhancedMetalRenderer:
 
         # Draw sensors
         for sensor in frame.sensors:
-            lon, lat, pollution, label, trend, upwindness = sensor
+            lon, lat, pollution, label, trend, upwindness, *_wind = sensor
             pos = self.geo_to_pixel(lon, lat)
             size = self.get_circle_size(pollution)
             color = self.get_plasma_color(pollution)

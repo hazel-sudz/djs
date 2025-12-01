@@ -4,3 +4,4 @@
 planes/data
 **/rosm.cache/**
 **/out/**
+**/out_simple/**
