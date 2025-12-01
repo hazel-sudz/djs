@@ -121,15 +121,19 @@ def process_day_simple(df: pd.DataFrame, target_date: str, sensor_coords: list,
     # Drop invalid rows
     df = df.dropna(subset=['pollution', 'lat', 'lon', 'sensor_id'])
 
-    # Filter outliers
+    # Filter outliers - cap at P99 (~200K) and remove spikes
     if len(df) > 0:
-        p999 = df['pollution'].quantile(0.999)
+        p99 = df['pollution'].quantile(0.99)
         df['rolling_median'] = df.groupby('sensor_id')['pollution'].transform(
             lambda x: x.rolling(window=5, min_periods=1, center=True).median()
         )
-        spike_mask = (df['pollution'] / df['rolling_median'].clip(lower=1)) <= 100
-        df = df[(df['pollution'] <= p999) & spike_mask]
+        spike_mask = (df['pollution'] / df['rolling_median'].clip(lower=1)) <= 50
+        df = df[(df['pollution'] <= p99) & spike_mask]
         df = df.drop(columns=['rolling_median'])
+
+    # Also filter extreme wind speeds (cap at 5 m/s)
+    if len(df) > 0:
+        df = df[df['wind_speed'].isna() | (df['wind_speed'] <= 5)]
 
     if len(df) == 0:
         return []

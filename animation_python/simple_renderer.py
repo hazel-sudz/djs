@@ -21,6 +21,7 @@ from Quartz import (
     CGContextFillRect,
     CGContextSetStrokeColorWithColor,
     CGContextSetLineWidth,
+    CGContextSetLineCap,
     CGContextMoveToPoint,
     CGContextAddLineToPoint,
     CGContextStrokePath,
@@ -53,7 +54,15 @@ class SimpleRenderer:
     HEADER_HEIGHT = 90
     FOOTER_HEIGHT = 40
     LEFT_MARGIN = 30
-    RIGHT_MARGIN = 160
+    RIGHT_MARGIN = 180
+
+    # Normalization ranges (based on data analysis)
+    # Pollution: P1=2K, P99=194K - use 2K-150K for visualization
+    POLLUTION_VIS_MIN = 2000
+    POLLUTION_VIS_MAX = 150000
+
+    # Wind speed: P1=0.04, P99=3.93 - use 0-4 m/s
+    WIND_SPEED_MAX = 4.0
 
     # Plasma colormap
     PLASMA_COLORS = [
@@ -118,8 +127,9 @@ class SimpleRenderer:
         return (px, py)
 
     def get_plasma_color(self, pollution: float) -> tuple:
-        """Get plasma colormap color for pollution value."""
-        norm = (pollution - self.pollution_min) / (self.pollution_max - self.pollution_min + 1e-6)
+        """Get plasma colormap color for pollution value (normalized to visual range)."""
+        # Normalize to visual range for consistent coloring
+        norm = (pollution - self.POLLUTION_VIS_MIN) / (self.POLLUTION_VIS_MAX - self.POLLUTION_VIS_MIN)
         norm = max(0, min(1, norm))
         idx = norm * (len(self.PLASMA_COLORS) - 1)
         i = int(idx)
@@ -130,10 +140,11 @@ class SimpleRenderer:
         return tuple(c1[j] + f * (c2[j] - c1[j]) for j in range(3))
 
     def get_circle_size(self, pollution: float) -> float:
-        """Get circle size based on pollution level."""
-        norm = (pollution - self.pollution_min) / (self.pollution_max - self.pollution_min + 1e-6)
+        """Get circle size based on pollution level (normalized to visual range)."""
+        # Normalize to visual range, not data range
+        norm = (pollution - self.POLLUTION_VIS_MIN) / (self.POLLUTION_VIS_MAX - self.POLLUTION_VIS_MIN)
         norm = max(0, min(1, norm))
-        return 20 + norm * 35  # 20-55 pixels
+        return 35 + norm * 50  # 35-85 pixels (bigger circles)
 
     def draw_label(self, ctx, text: str, x: float, y: float, font_size: float = 12,
                    bold: bool = True, bg_color=None, padding: float = 4, centered: bool = True):
@@ -171,25 +182,25 @@ class SimpleRenderer:
 
     def draw_title(self, ctx, date_label: str, time_label: str):
         """Draw title with date and time."""
-        title_y = self.height - 50
-        self.draw_label(ctx, date_label, self.width / 2, title_y,
-                        font_size=24, bold=True, centered=True)
-        self.draw_label(ctx, time_label, self.width / 2, title_y - 30,
-                        font_size=20, bold=False, centered=True)
+        title_y = self.height - 35
+        self.draw_label(ctx, "Ultrafine Particle Pollution (UFP)", self.width / 2, title_y,
+                        font_size=22, bold=True, centered=True)
+        self.draw_label(ctx, f"{date_label}  •  {time_label}", self.width / 2, title_y - 28,
+                        font_size=16, bold=False, centered=True)
 
     def draw_legend(self, ctx):
         """Draw color scale legend."""
-        legend_x = self.width - self.RIGHT_MARGIN + 20
-        legend_y = self.FOOTER_HEIGHT + 50
-        bar_width = 20
-        bar_height = 200
+        legend_x = self.width - self.RIGHT_MARGIN + 25
+        legend_y = self.FOOTER_HEIGHT + 80
+        bar_width = 25
+        bar_height = 220
 
-        # Draw gradient bar
+        # Draw gradient bar using visual range
         num_steps = 50
         step_height = bar_height / num_steps
         for i in range(num_steps):
             t = i / (num_steps - 1)
-            pollution = self.pollution_min + t * (self.pollution_max - self.pollution_min)
+            pollution = self.POLLUTION_VIS_MIN + t * (self.POLLUTION_VIS_MAX - self.POLLUTION_VIS_MIN)
             color = self.get_plasma_color(pollution)
             CGContextSetFillColorWithColor(ctx, self.create_color(*color))
             CGContextFillRect(ctx, CGRectMake(legend_x, legend_y + i * step_height, bar_width, step_height + 1))
@@ -200,16 +211,38 @@ class SimpleRenderer:
         CGContextAddRect(ctx, CGRectMake(legend_x, legend_y, bar_width, bar_height))
         CGContextStrokePath(ctx)
 
-        # Labels
-        for val, y_pos in [(self.pollution_min, legend_y - 2), (self.pollution_max, legend_y + bar_height - 8)]:
-            text = f"{val/1000:.0f}K" if val >= 1000 else f"{val:.0f}"
-            self.draw_label(ctx, text, legend_x + bar_width + 5, y_pos, font_size=10, bold=False, centered=False)
+        # Labels - use visual range with more tick marks
+        tick_values = [2000, 25000, 50000, 75000, 100000, 125000, 150000]
+        for val in tick_values:
+            t = (val - self.POLLUTION_VIS_MIN) / (self.POLLUTION_VIS_MAX - self.POLLUTION_VIS_MIN)
+            y_pos = legend_y + t * bar_height - 4
+            text = f"{val/1000:.0f}K"
+            self.draw_label(ctx, text, legend_x + bar_width + 8, y_pos, font_size=10, bold=False, centered=False)
 
         # Title
-        self.draw_label(ctx, "UFP", legend_x + bar_width / 2, legend_y + bar_height + 20,
-                        font_size=11, bold=True, centered=True)
-        self.draw_label(ctx, "(#/cm³)", legend_x + bar_width / 2, legend_y + bar_height + 6,
+        self.draw_label(ctx, "Concentration", legend_x + bar_width / 2, legend_y + bar_height + 25,
+                        font_size=10, bold=True, centered=True)
+        self.draw_label(ctx, "(particles/cm³)", legend_x + bar_width / 2, legend_y + bar_height + 10,
                         font_size=9, bold=False, centered=True)
+
+        # Wind legend
+        wind_y = legend_y - 60
+        self.draw_label(ctx, "Wind Direction", legend_x + bar_width / 2, wind_y,
+                        font_size=10, bold=True, centered=True)
+        # Draw sample arrow
+        arrow_x = legend_x + bar_width / 2
+        arrow_y = wind_y - 30
+        CGContextSetStrokeColorWithColor(ctx, self.create_color(0.15, 0.35, 0.75, 0.8))
+        CGContextSetLineWidth(ctx, 3)
+        CGContextSetLineCap(ctx, kCGLineCapRound)
+        CGContextMoveToPoint(ctx, arrow_x, arrow_y)
+        CGContextAddLineToPoint(ctx, arrow_x + 35, arrow_y)
+        CGContextStrokePath(ctx)
+        # Arrowhead
+        CGContextMoveToPoint(ctx, arrow_x + 28, arrow_y - 5)
+        CGContextAddLineToPoint(ctx, arrow_x + 35, arrow_y)
+        CGContextAddLineToPoint(ctx, arrow_x + 28, arrow_y + 5)
+        CGContextStrokePath(ctx)
 
     def draw_wind_arrow(self, ctx, x: float, y: float, wind_dir: float, wind_speed: float):
         """
@@ -218,7 +251,7 @@ class SimpleRenderer:
         wind_dir: meteorological direction (where wind comes FROM), 0=N, 90=E
         Arrow points in direction wind is going TO.
         """
-        if wind_speed < 0.5:  # Skip very light winds
+        if wind_speed < 0.1:  # Skip calm winds
             return
 
         # Convert meteorological direction (FROM) to mathematical angle (TO)
@@ -230,10 +263,9 @@ class SimpleRenderer:
         # In our coordinate system: 0=right, 90=up
         angle_rad = math.radians(90 - to_dir)
 
-        # Arrow length based on wind speed (scale: 3-15 m/s maps to 30-80 pixels)
-        min_speed, max_speed = 0, 15
-        min_len, max_len = 30, 80
-        norm_speed = min(1, max(0, (wind_speed - min_speed) / (max_speed - min_speed)))
+        # Arrow length based on wind speed (normalized to 0-4 m/s range)
+        norm_speed = min(1, max(0, wind_speed / self.WIND_SPEED_MAX))
+        min_len, max_len = 50, 120  # Bigger arrows
         arrow_len = min_len + norm_speed * (max_len - min_len)
 
         # Calculate arrow endpoint
@@ -242,25 +274,26 @@ class SimpleRenderer:
         end_x = x + dx
         end_y = y + dy
 
-        # Arrow color - blue with alpha based on speed
-        alpha = 0.5 + 0.4 * norm_speed
-        arrow_color = self.create_color(0.1, 0.3, 0.7, alpha)
+        # Arrow color - blue, more visible
+        alpha = 0.6 + 0.35 * norm_speed
+        arrow_color = self.create_color(0.15, 0.35, 0.75, alpha)
 
-        # Draw arrow shaft
+        # Draw arrow shaft - thicker
         CGContextSetStrokeColorWithColor(ctx, arrow_color)
-        CGContextSetLineWidth(ctx, 2.5)
-        Quartz.CGContextSetLineCap(ctx, kCGLineCapRound)
+        CGContextSetLineWidth(ctx, 3.5)
+        CGContextSetLineCap(ctx, kCGLineCapRound)
         CGContextMoveToPoint(ctx, x, y)
         CGContextAddLineToPoint(ctx, end_x, end_y)
         CGContextStrokePath(ctx)
 
-        # Draw arrowhead
-        head_len = 10
-        head_angle = 0.4  # radians
+        # Draw arrowhead - bigger
+        head_len = 14
+        head_angle = 0.45  # radians
 
         head_angle1 = angle_rad + math.pi - head_angle
         head_angle2 = angle_rad + math.pi + head_angle
 
+        CGContextSetLineWidth(ctx, 3.0)
         CGContextMoveToPoint(ctx, end_x + head_len * math.cos(head_angle1),
                              end_y + head_len * math.sin(head_angle1))
         CGContextAddLineToPoint(ctx, end_x, end_y)
