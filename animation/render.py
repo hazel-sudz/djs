@@ -93,7 +93,7 @@ def main():
     parser.add_argument("--days", nargs="*", help="Specific days to render (YYYY-MM-DD)")
     parser.add_argument("--width", type=int, default=1800, help="Frame width")
     parser.add_argument("--height", type=int, default=1200, help="Frame height")
-    parser.add_argument("--fps", type=float, default=2.0, help="Frames per second")
+    parser.add_argument("--fps", type=float, default=16.0, help="Frames per second")
     args = parser.parse_args()
 
     print("\n" + "="*60)
