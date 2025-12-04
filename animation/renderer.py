@@ -235,35 +235,6 @@ class Renderer:
         self.draw_label(ctx, "(particles/cm³)", legend_x + bar_width / 2, legend_y + bar_height + 10,
                         font_size=9, bold=False, centered=True)
 
-        # Wind legend
-        wind_y = legend_y - 60
-        self.draw_label(ctx, "Wind Direction", legend_x + bar_width / 2, wind_y,
-                        font_size=10, bold=True, centered=True)
-        # Draw sample arrow
-        arrow_x = legend_x + bar_width / 2
-        arrow_y = wind_y - 30
-        CGContextSetStrokeColorWithColor(ctx, self.create_color(0.15, 0.35, 0.75, 0.8))
-        CGContextSetLineWidth(ctx, 3)
-        CGContextSetLineCap(ctx, kCGLineCapRound)
-        CGContextMoveToPoint(ctx, arrow_x, arrow_y)
-        CGContextAddLineToPoint(ctx, arrow_x + 35, arrow_y)
-        CGContextStrokePath(ctx)
-        # Arrowhead
-        CGContextMoveToPoint(ctx, arrow_x + 28, arrow_y - 5)
-        CGContextAddLineToPoint(ctx, arrow_x + 35, arrow_y)
-        CGContextAddLineToPoint(ctx, arrow_x + 28, arrow_y + 5)
-        CGContextStrokePath(ctx)
-
-        # Sensors legend (above the concentration gradient)
-        sensors_y = legend_y + bar_height + 100
-        self.draw_label(ctx, "Sensors", legend_x + bar_width / 2, sensors_y,
-                        font_size=10, bold=True, centered=True)
-        sensor_list = ["MOD-UFP-00007", "MOD-UFP-00008", "MOD-UFP-00009"]
-        for i, sensor_id in enumerate(sensor_list):
-            sensor_name = self.SENSOR_NAMES.get(sensor_id, sensor_id)
-            self.draw_label(ctx, sensor_name, legend_x + bar_width / 2, sensors_y - 16 - i * 14,
-                           font_size=9, bold=False, centered=True)
-
     def draw_wind_arrow(self, ctx, x: float, y: float, wind_dir: float, wind_speed: float, circle_radius: float = 0):
         """
         Draw wind as a clean cone starting from edge of pollution circle.
@@ -375,7 +346,12 @@ class Renderer:
         # Draw wind arrow from center
         self.draw_wind_arrow(ctx, center_x, center_y, avg_dir, avg_speed, bg_radius)
 
-        # Label
+        # Wind speed label inside circle
+        speed_label = f"{avg_speed:.1f} m/s"
+        self.draw_label(ctx, speed_label, center_x, center_y - 5,
+                       font_size=11, bold=True, bg_color=self.create_color(1, 1, 1, 0.9))
+
+        # Label below circle
         self.draw_label(ctx, "Avg Wind", center_x, center_y + bg_radius + 16,
                        font_size=10, bold=True, bg_color=self.create_color(1, 1, 1, 0.85))
 
