@@ -186,7 +186,7 @@ class Renderer:
     def draw_title(self, ctx, date_label: str, time_label: str):
         """Draw title with date and time."""
         title_y = self.height - 35
-        self.draw_label(ctx, "Ultrafine Particle Pollution (UFP)", self.width / 2, title_y,
+        self.draw_label(ctx, "Ultrafine Particle Pollution (UFP) — particles/cm³", self.width / 2, title_y,
                         font_size=22, bold=True, centered=True)
         self.draw_label(ctx, f"{date_label}  •  {time_label}", self.width / 2, title_y - 28,
                         font_size=16, bold=False, centered=True)
