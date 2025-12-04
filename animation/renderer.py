@@ -416,7 +416,7 @@ class Renderer:
             self.draw_label(ctx, sensor_name, pos[0], pos[1] - 5,
                            font_size=11, bold=True, bg_color=self.create_color(1, 1, 1, 0.9))
             # Pollution value below sensor name
-            label = f"{pollution/1000:.1f}K" if pollution >= 1000 else f"{pollution:.0f}"
+            label = f"{pollution/1000:.1f}K p/cm³" if pollution >= 1000 else f"{pollution:.0f} p/cm³"
             self.draw_label(ctx, label, pos[0], pos[1] + size/2 + 14,
                            font_size=10, bold=True, bg_color=self.create_color(1, 1, 1, 0.85))
 
