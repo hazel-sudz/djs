@@ -67,6 +67,13 @@ class Renderer:
     # Wind speed: P1=0.04, P99=3.93 - use 0-4 m/s
     WIND_SPEED_MAX = 4.0
 
+    # Sensor display names (full names)
+    SENSOR_NAMES = {
+        "MOD-UFP-00007": "MOD-UFP-00007",
+        "MOD-UFP-00008": "MOD-UFP-00008",
+        "MOD-UFP-00009": "MOD-UFP-00009",
+    }
+
     # Plasma colormap
     PLASMA_COLORS = [
         (0.050, 0.030, 0.528), (0.133, 0.022, 0.563), (0.208, 0.020, 0.588),
@@ -247,6 +254,16 @@ class Renderer:
         CGContextAddLineToPoint(ctx, arrow_x + 28, arrow_y + 5)
         CGContextStrokePath(ctx)
 
+        # Sensors legend (above the concentration gradient)
+        sensors_y = legend_y + bar_height + 100
+        self.draw_label(ctx, "Sensors", legend_x + bar_width / 2, sensors_y,
+                        font_size=10, bold=True, centered=True)
+        sensor_list = ["MOD-UFP-00007", "MOD-UFP-00008", "MOD-UFP-00009"]
+        for i, sensor_id in enumerate(sensor_list):
+            sensor_name = self.SENSOR_NAMES.get(sensor_id, sensor_id)
+            self.draw_label(ctx, sensor_name, legend_x + bar_width / 2, sensors_y - 16 - i * 14,
+                           font_size=9, bold=False, centered=True)
+
     def draw_wind_arrow(self, ctx, x: float, y: float, wind_dir: float, wind_speed: float, circle_radius: float = 0):
         """
         Draw wind as a clean cone starting from edge of pollution circle.
@@ -323,7 +340,7 @@ class Renderer:
         u_sum, v_sum, speed_sum = 0, 0, 0
         count = 0
         for sensor in sensors:
-            lon, lat, pollution, wind_dir, wind_speed = sensor
+            lon, lat, pollution, wind_dir, wind_speed, sensor_id = sensor
             if wind_speed > 0.1:
                 # Convert to radians (meteorological: 0=N, 90=E)
                 rad = math.radians(wind_dir)
@@ -390,7 +407,7 @@ class Renderer:
 
         # Draw sensor circles first
         for sensor in frame.sensors:
-            lon, lat, pollution, wind_dir, wind_speed = sensor
+            lon, lat, pollution, wind_dir, wind_speed, sensor_id = sensor
             pos = self.geo_to_pixel(lon, lat)
             size = self.get_circle_size(pollution)
             color = self.get_plasma_color(pollution)
@@ -408,16 +425,21 @@ class Renderer:
 
         # Draw wind arrows on top (starting from edge of circles)
         for sensor in frame.sensors:
-            lon, lat, pollution, wind_dir, wind_speed = sensor
+            lon, lat, pollution, wind_dir, wind_speed, sensor_id = sensor
             pos = self.geo_to_pixel(lon, lat)
             circle_size = self.get_circle_size(pollution)
             self.draw_wind_arrow(ctx, pos[0], pos[1], wind_dir, wind_speed, circle_size / 2)
 
-        # Draw pollution labels on top
+        # Draw labels on circles
         for sensor in frame.sensors:
-            lon, lat, pollution, wind_dir, wind_speed = sensor
+            lon, lat, pollution, wind_dir, wind_speed, sensor_id = sensor
             pos = self.geo_to_pixel(lon, lat)
             size = self.get_circle_size(pollution)
+            # Sensor name in center of circle
+            sensor_name = self.SENSOR_NAMES.get(sensor_id, sensor_id)
+            self.draw_label(ctx, sensor_name, pos[0], pos[1] - 5,
+                           font_size=11, bold=True, bg_color=self.create_color(1, 1, 1, 0.9))
+            # Pollution value below sensor name
             label = f"{pollution/1000:.1f}K" if pollution >= 1000 else f"{pollution:.0f}"
             self.draw_label(ctx, label, pos[0], pos[1] + size/2 + 14,
                            font_size=10, bold=True, bg_color=self.create_color(1, 1, 1, 0.85))

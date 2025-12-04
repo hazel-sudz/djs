@@ -16,7 +16,7 @@ class FrameData(NamedTuple):
     date_label: str
     time_label: str
 
-    # Per-sensor data: [(lon, lat, pollution, wind_dir, wind_speed), ...]
+    # Per-sensor data: [(lon, lat, pollution, wind_dir, wind_speed, sensor_id), ...]
     sensors: list
 
 
@@ -215,7 +215,8 @@ def process_day(df: pd.DataFrame, target_date: str, sensor_coords: list,
                 data['lat'],
                 data['pollution'][i],
                 data['wind_dir'][i],
-                data['wind_speed'][i]
+                data['wind_speed'][i],
+                sensor_id
             ))
 
         if len(sensors_list) == 0:
