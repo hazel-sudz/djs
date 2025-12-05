@@ -125,13 +125,25 @@ class Renderer:
         """Create a CGColor."""
         return CGColorCreate(self.color_space, [r, g, b, a])
 
+    def lat_to_mercator(self, lat: float) -> float:
+        """Convert latitude to Mercator Y value (normalized)."""
+        lat_rad = math.radians(lat)
+        return math.asinh(math.tan(lat_rad)) / math.pi
+
     def geo_to_pixel(self, lon: float, lat: float) -> tuple:
-        """Convert geographic coordinates to pixel coordinates."""
+        """Convert geographic coordinates to pixel coordinates using Mercator projection."""
+        # Longitude is linear
         x_ratio = (lon - self.map_extent.lon_min) / (self.map_extent.lon_max - self.map_extent.lon_min)
-        y_ratio = (lat - self.map_extent.lat_min) / (self.map_extent.lat_max - self.map_extent.lat_min)
+
+        # Latitude uses Mercator projection
+        merc_lat = self.lat_to_mercator(lat)
+        merc_lat_min = self.lat_to_mercator(self.map_extent.lat_min)
+        merc_lat_max = self.lat_to_mercator(self.map_extent.lat_max)
+        y_ratio = (merc_lat - merc_lat_min) / (merc_lat_max - merc_lat_min)
+
         px = self.map_x + x_ratio * self.map_width
-        # Invert y since image has y=0 at top but lat increases northward
-        py = self.map_y + self.map_height - y_ratio * self.map_height
+        # Higher latitude = higher y_ratio = higher on map (higher y in Quartz)
+        py = self.map_y + y_ratio * self.map_height
         return (px, py)
 
     def get_plasma_color(self, pollution: float) -> tuple:
@@ -234,6 +246,43 @@ class Renderer:
                         font_size=10, bold=True, centered=True)
         self.draw_label(ctx, "(particles/cm³)", legend_x + bar_width / 2, legend_y + bar_height + 10,
                         font_size=9, bold=False, centered=True)
+
+    def draw_grid(self, ctx):
+        """Draw lat/lon grid lines on the map for debugging alignment."""
+        CGContextSetStrokeColorWithColor(ctx, self.create_color(1, 0, 0, 0.7))
+        CGContextSetLineWidth(ctx, 1.5)
+
+        # Draw longitude lines (vertical)
+        lon_start = -71.04
+        lon_end = -70.96
+        lon_step = 0.01
+        lon = lon_start
+        while lon <= lon_end:
+            p1 = self.geo_to_pixel(lon, self.map_extent.lat_min)
+            p2 = self.geo_to_pixel(lon, self.map_extent.lat_max)
+            CGContextMoveToPoint(ctx, p1[0], p1[1])
+            CGContextAddLineToPoint(ctx, p2[0], p2[1])
+            CGContextStrokePath(ctx)
+            # Label
+            self.draw_label(ctx, f"{lon:.2f}", p1[0], p1[1] - 10,
+                           font_size=9, bold=True, bg_color=self.create_color(1, 1, 1, 0.9))
+            lon += lon_step
+
+        # Draw latitude lines (horizontal)
+        lat_start = 42.35
+        lat_end = 42.40
+        lat_step = 0.01
+        lat = lat_start
+        while lat <= lat_end:
+            p1 = self.geo_to_pixel(self.map_extent.lon_min, lat)
+            p2 = self.geo_to_pixel(self.map_extent.lon_max, lat)
+            CGContextMoveToPoint(ctx, p1[0], p1[1])
+            CGContextAddLineToPoint(ctx, p2[0], p2[1])
+            CGContextStrokePath(ctx)
+            # Label
+            self.draw_label(ctx, f"{lat:.2f}", p1[0] + 25, p1[1],
+                           font_size=9, bold=True, bg_color=self.create_color(1, 1, 1, 0.9))
+            lat += lat_step
 
     def draw_wind_arrow(self, ctx, x: float, y: float, wind_dir: float, wind_speed: float, circle_radius: float = 0):
         """

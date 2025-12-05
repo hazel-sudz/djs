@@ -34,6 +34,21 @@ def num2deg(xtile: int, ytile: int, zoom: int) -> tuple[float, float]:
     return (lat_deg, lon_deg)
 
 
+def lat_to_mercator_y(lat_deg: float, zoom: int) -> float:
+    """Convert latitude to Mercator Y pixel coordinate at given zoom."""
+    lat_rad = math.radians(lat_deg)
+    n = 2.0 ** zoom
+    y = (1.0 - math.asinh(math.tan(lat_rad)) / math.pi) / 2.0 * n * TILE_SIZE
+    return y
+
+
+def lon_to_mercator_x(lon_deg: float, zoom: int) -> float:
+    """Convert longitude to Mercator X pixel coordinate at given zoom."""
+    n = 2.0 ** zoom
+    x = (lon_deg + 180.0) / 360.0 * n * TILE_SIZE
+    return x
+
+
 def get_tile_url(x: int, y: int, zoom: int, server: str = "a") -> str:
     """Get OSM tile URL."""
     return f"https://{server}.tile.openstreetmap.org/{zoom}/{x}/{y}.png"
@@ -118,10 +133,6 @@ def create_base_map(
     for coord, img in results:
         tiles[coord] = img
 
-    # Calculate the pixel coordinates of the map extent within the tile grid
-    nw_lat, nw_lon = num2deg(min_tile[0], min_tile[1], zoom)
-    se_lat, se_lon = num2deg(max_tile[0] + 1, max_tile[1] + 1, zoom)
-
     # Create composite image
     composite_width = len(x_tiles) * TILE_SIZE
     composite_height = len(y_tiles) * TILE_SIZE
@@ -132,15 +143,16 @@ def create_base_map(
         py = (y - min_tile[1]) * TILE_SIZE
         composite.paste(img, (px, py))
 
-    # Calculate crop region to match map extent
-    # Convert geo coordinates to pixel positions in composite
-    lon_per_pixel = (se_lon - nw_lon) / composite_width
-    lat_per_pixel = (nw_lat - se_lat) / composite_height  # Note: lat decreases downward
+    # Calculate crop region using proper Mercator projection
+    # Get the pixel origin of our tile grid in global Mercator coordinates
+    tile_origin_x = min_tile[0] * TILE_SIZE
+    tile_origin_y = min_tile[1] * TILE_SIZE
 
-    crop_left = int((map_extent.lon_min - nw_lon) / lon_per_pixel)
-    crop_right = int((map_extent.lon_max - nw_lon) / lon_per_pixel)
-    crop_top = int((nw_lat - map_extent.lat_max) / lat_per_pixel)
-    crop_bottom = int((nw_lat - map_extent.lat_min) / lat_per_pixel)
+    # Convert map extent to Mercator pixel coordinates
+    crop_left = int(lon_to_mercator_x(map_extent.lon_min, zoom) - tile_origin_x)
+    crop_right = int(lon_to_mercator_x(map_extent.lon_max, zoom) - tile_origin_x)
+    crop_top = int(lat_to_mercator_y(map_extent.lat_max, zoom) - tile_origin_y)
+    crop_bottom = int(lat_to_mercator_y(map_extent.lat_min, zoom) - tile_origin_y)
 
     # Ensure valid crop region
     crop_left = max(0, crop_left)
