@@ -61,7 +61,7 @@ class Renderer:
 
     HEADER_HEIGHT = 90
     FOOTER_HEIGHT = 40
-    LEFT_MARGIN = 30
+    LEFT_MARGIN = 55
     RIGHT_MARGIN = 180
 
     # Plasma colormap
@@ -179,8 +179,12 @@ class Renderer:
         return self.circle_min + norm * size_range
 
     def draw_label(self, ctx, text: str, x: float, y: float, font_size: float = 12,
-                   bold: bool = True, bg_color=None, padding: float = 4, centered: bool = True):
-        """Draw text label with optional background."""
+                   bold: bool = True, bg_color=None, padding: float = 4, anchor: str = "center"):
+        """Draw text label with optional background.
+
+        Args:
+            anchor: Text alignment - "left", "center", or "right"
+        """
         from CoreText import CTFontCreateWithName, CTLineCreateWithAttributedString, CTLineDraw, CTLineGetBoundsWithOptions, kCTFontAttributeName, kCTForegroundColorFromContextAttributeName
         from Foundation import NSAttributedString
         from Quartz import CGContextSetTextMatrix, CGAffineTransformMake
@@ -192,9 +196,11 @@ class Renderer:
         line = CTLineCreateWithAttributedString(attr_string)
         bounds = CTLineGetBoundsWithOptions(line, 0)
 
-        if centered:
+        if anchor == "center":
             text_x = x - bounds.size.width / 2
-        else:
+        elif anchor == "right":
+            text_x = x - bounds.size.width
+        else:  # left
             text_x = x
 
         text_y = y
@@ -219,9 +225,9 @@ class Renderer:
         title_y = self.height - 35
         title_text = f"{self.pollution_type.display_name} — {self.pollution_type.unit}"
         self.draw_label(ctx, title_text, self.width / 2, title_y,
-                        font_size=22, bold=True, centered=True)
+                        font_size=22, bold=True, anchor="center")
         self.draw_label(ctx, f"{date_label}  •  {time_label}", self.width / 2, title_y - 28,
-                        font_size=16, bold=False, centered=True)
+                        font_size=16, bold=False, anchor="center")
 
     def draw_legend(self, ctx):
         """Draw color scale legend, centered in the right margin."""
@@ -263,13 +269,13 @@ class Renderer:
                 text = f"{val/1000:.0f}K"
             else:
                 text = f"{val:.0f}"
-            self.draw_label(ctx, text, legend_x + bar_width + 15, y_pos, font_size=14.5, bold=False, centered=False)
+            self.draw_label(ctx, text, legend_x + bar_width + 15, y_pos, font_size=14.5, bold=False, anchor="left")
 
         # Title
         self.draw_label(ctx, "Concentration", legend_x + bar_width / 2, legend_y + bar_height + 45,
-                        font_size=16, bold=True, centered=True)
+                        font_size=16, bold=True, anchor="center")
         self.draw_label(ctx, f"({self.pollution_type.unit})", legend_x + bar_width / 2, legend_y + bar_height + 22,
-                        font_size=14.5, bold=False, centered=True)
+                        font_size=14.5, bold=False, anchor="center")
 
     def draw_region_overlays(self, ctx):
         """Draw region outlines and labels (Galena Park boundary, Ship Channel label, etc.)."""
@@ -443,20 +449,27 @@ class Renderer:
         step = self.site_config.coord_label_step
 
         # Draw longitude labels (at bottom)
-        lon = lon_start
+        # Skip first label to avoid overlap with latitude labels in bottom-left corner
+        lon = lon_start + step
         while lon <= lon_end + step / 2:  # Small tolerance for floating point
             p1 = self.geo_to_pixel(lon, self.map_extent.lat_min)
             self.draw_label(ctx, f"{lon:.2f}", p1[0], p1[1] - 12,
                            font_size=14.5, bold=True, bg_color=self.create_color(1, 1, 1, 0.9))
             lon += step
 
-        # Draw latitude labels (at left)
-        lat = lat_start
-        while lat <= lat_end + step / 2:  # Small tolerance for floating point
+        # Draw latitude labels (at left edge, outside the map like longitude labels are below)
+        # Use smaller step for latitude to get more labels (vertical range is usually smaller)
+        lat_step = step / 2  # 0.01 instead of 0.02
+        # Skip first label to match the skipped longitude label in corner
+        lat = lat_start + lat_step
+        while lat <= lat_end + lat_step / 2:  # Small tolerance for floating point
             p1 = self.geo_to_pixel(self.map_extent.lon_min, lat)
-            self.draw_label(ctx, f"{lat:.2f}", p1[0] + 30, p1[1],
-                           font_size=14.5, bold=True, bg_color=self.create_color(1, 1, 1, 0.9))
-            lat += step
+            # Position label to the left of map edge (like lon labels are below map edge)
+            # Right-align so the label ends at the map edge
+            self.draw_label(ctx, f"{lat:.2f}", p1[0] - 5, p1[1],
+                           font_size=14.5, bold=True, bg_color=self.create_color(1, 1, 1, 0.9),
+                           anchor="right")
+            lat += lat_step
 
     def draw_wind_arrow(self, ctx, x: float, y: float, wind_dir: float, wind_speed: float, circle_radius: float = 0):
         """
