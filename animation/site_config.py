@@ -171,7 +171,7 @@ def create_ecagp_config() -> SiteConfig:
     """
     return SiteConfig(
         name="ecagp",
-        display_name="ECAGP Galena Park",
+        display_name="Galena Park",
         data_file="data/ECAGP.rds",
         column_mapping=ColumnMapping(
             timestamp="timestamp",

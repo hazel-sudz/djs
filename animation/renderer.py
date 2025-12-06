@@ -221,11 +221,12 @@ class Renderer:
         CGContextRestoreGState(ctx)
 
     def draw_title(self, ctx, date_label: str, time_label: str):
-        """Draw title with date and time."""
+        """Draw title with site name, pollution type, date and time."""
         title_y = self.height - 35
-        title_text = f"{self.pollution_type.display_name} — {self.pollution_type.unit}"
+        # Include site name in title
+        title_text = f"{self.site_config.display_name} — {self.pollution_type.display_name} — {self.pollution_type.unit}"
         self.draw_label(ctx, title_text, self.width / 2, title_y,
-                        font_size=22, bold=True, anchor="center")
+                        font_size=20, bold=True, anchor="center")
         self.draw_label(ctx, f"{date_label}  •  {time_label}", self.width / 2, title_y - 28,
                         font_size=16, bold=False, anchor="center")
 
