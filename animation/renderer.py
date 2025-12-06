@@ -211,11 +211,15 @@ class Renderer:
                         font_size=16, bold=False, centered=True)
 
     def draw_legend(self, ctx):
-        """Draw color scale legend."""
-        legend_x = self.width - self.RIGHT_MARGIN + 25
-        legend_y = self.FOOTER_HEIGHT + 80
+        """Draw color scale legend, centered in the right margin."""
         bar_width = 25
         bar_height = 220
+        # Center legend horizontally in the right margin (accounting for labels on right side)
+        margin_center_x = self.width - self.RIGHT_MARGIN / 2
+        legend_x = margin_center_x - bar_width / 2 - 15  # Offset left to account for right-side labels
+        # Center legend vertically in the map area
+        map_center_y = self.map_y + self.map_height / 2
+        legend_y = map_center_y - bar_height / 2
 
         # Draw gradient bar using visual range
         num_steps = 50
