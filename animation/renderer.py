@@ -325,12 +325,10 @@ class Renderer:
             (-95.2517032, 29.7598861),
         ]
 
-        # Draw Galena Park boundary as dashed line
+        # Draw Galena Park boundary as solid line
         CGContextSaveGState(ctx)
         CGContextSetStrokeColorWithColor(ctx, self.create_color(0.8, 0.2, 0.3, 0.8))
-        CGContextSetLineWidth(ctx, 3)
-        # Set dash pattern
-        Quartz.CGContextSetLineDash(ctx, 0, [8, 6], 2)
+        CGContextSetLineWidth(ctx, 2.5)
 
         CGContextBeginPath(ctx)
         first = True
@@ -345,13 +343,57 @@ class Renderer:
         CGContextStrokePath(ctx)
         CGContextRestoreGState(ctx)
 
-        # Galena Park label - positioned inside the boundary, upper area
-        gp_label_pos = self.geo_to_pixel(-95.230, 29.755)
+        # Galena Park label - positioned ABOVE the outline
+        gp_label_pos = self.geo_to_pixel(-95.230, 29.763)
         self.draw_label(ctx, "Galena Park", gp_label_pos[0], gp_label_pos[1],
                        font_size=18, bold=True, bg_color=self.create_color(1, 1, 1, 0.85))
 
-        # Houston Ship Channel label - on the waterway in the SE area
-        ship_channel_pos = self.geo_to_pixel(-95.165, 29.735)
+        # Buffalo Bayou / Houston Ship Channel path - exact coordinates from OSM
+        ship_channel_path = [
+            (-95.3197549, 29.7559644),
+            (-95.3173258, 29.7548765),
+            (-95.3144591, 29.755264),
+            (-95.3079992, 29.7545072),
+            (-95.3042655, 29.7556621),
+            (-95.300357, 29.7527144),
+            (-95.2974163, 29.7542315),
+            (-95.2962578, 29.7528751),
+            (-95.294876, 29.75134),
+            (-95.2887282, 29.7498828),
+            (-95.2795981, 29.7384403),
+            (-95.2714485, 29.7252607),
+            (-95.2589619, 29.7272664),
+            (-95.2491802, 29.721449),
+            (-95.2418615, 29.719184),
+            (-95.2292155, 29.725196),
+            (-95.220332, 29.7246966),
+            (-95.2096912, 29.7279764),
+            (-95.2006925, 29.7406783),
+            (-95.173454, 29.7470126),
+            (-95.1592034, 29.7417418),
+            (-95.1541154, 29.7372003),
+            (-95.1400197, 29.7354902),
+        ]
+
+        # Draw ship channel path as solid blue line
+        CGContextSaveGState(ctx)
+        CGContextSetStrokeColorWithColor(ctx, self.create_color(0.2, 0.5, 0.9, 0.7))
+        CGContextSetLineWidth(ctx, 2.5)
+
+        CGContextBeginPath(ctx)
+        first = True
+        for lon, lat in ship_channel_path:
+            px, py = self.geo_to_pixel(lon, lat)
+            if first:
+                CGContextMoveToPoint(ctx, px, py)
+                first = False
+            else:
+                CGContextAddLineToPoint(ctx, px, py)
+        CGContextStrokePath(ctx)
+        CGContextRestoreGState(ctx)
+
+        # Houston Ship Channel label - on the waterway
+        ship_channel_pos = self.geo_to_pixel(-95.175, 29.745)
         self.draw_label(ctx, "Houston Ship Channel", ship_channel_pos[0], ship_channel_pos[1],
                        font_size=14, bold=True, bg_color=self.create_color(0.85, 0.95, 1.0, 0.9))
 
