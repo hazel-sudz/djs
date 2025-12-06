@@ -211,9 +211,8 @@ def create_ecagp_config() -> SiteConfig:
             ),
         ],
         sensors=[
-            # PLACEHOLDER COORDINATES - need actual sensor locations from user
-            SensorCoord("MOD-PM-01396", 29.745, -95.235),
-            SensorCoord("MOD-PM-01395", 29.738, -95.225),
+            SensorCoord("MOD-PM-01396", 29.7326, -95.2365),  # Clinton Site (Gia)
+            SensorCoord("MOD-PM-01395", 29.7342, -95.2418),  # Eastway Site (Isa)
         ],
         sensor_display_names={
             "MOD-PM-01396": "MOD-PM-01396",
