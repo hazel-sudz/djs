@@ -397,6 +397,45 @@ class Renderer:
         self.draw_label(ctx, "Houston Ship Channel", ship_channel_pos[0], ship_channel_pos[1],
                        font_size=14, bold=True, bg_color=self.create_color(0.85, 0.95, 1.0, 0.9))
 
+        # Refineries and chemical plants near Galena Park - from OpenStreetMap
+        refineries = [
+            # Major refineries
+            ("Valero Houston Refinery", -95.2524637, 29.7148001),
+            ("LyondellBasell Refinery", -95.235027, 29.713241),
+            ("PEMEX Deer Park", -95.1309608, 29.7234371),
+            # Chemical plants
+            ("Chevron Phillips", -95.181899, 29.735699),
+            ("INEOS", -95.155457, 29.729319),
+            ("BASF", -95.150252, 29.727939),
+            ("Albemarle", -95.1695986, 29.7354737),
+            ("Arkema", -95.1761636, 29.7591208),
+            ("Sasol", -95.1777914, 29.7607649),
+        ]
+
+        # Draw refinery markers and labels
+        for name, lon, lat in refineries:
+            # Check if within map bounds
+            if not (self.map_extent.lon_min <= lon <= self.map_extent.lon_max and
+                    self.map_extent.lat_min <= lat <= self.map_extent.lat_max):
+                continue
+
+            px, py = self.geo_to_pixel(lon, lat)
+
+            # Draw factory/refinery symbol (small smokestack icon)
+            # Base rectangle
+            CGContextSetFillColorWithColor(ctx, self.create_color(0.3, 0.3, 0.3, 0.9))
+            CGContextFillRect(ctx, CGRectMake(px - 8, py - 6, 16, 12))
+            # Smokestack
+            CGContextFillRect(ctx, CGRectMake(px - 3, py + 6, 6, 10))
+            # Smoke puff (circle)
+            CGContextSetFillColorWithColor(ctx, self.create_color(0.5, 0.5, 0.5, 0.7))
+            CGContextAddEllipseInRect(ctx, CGRectMake(px - 5, py + 14, 10, 8))
+            CGContextFillPath(ctx)
+
+            # Label
+            self.draw_label(ctx, name, px, py - 18,
+                           font_size=11, bold=True, bg_color=self.create_color(1, 0.95, 0.85, 0.9))
+
     def draw_coord_labels(self, ctx):
         """Draw lat/lon labels on the map edges."""
         # Get coordinate ranges from config
