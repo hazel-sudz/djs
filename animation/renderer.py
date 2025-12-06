@@ -247,39 +247,26 @@ class Renderer:
         self.draw_label(ctx, "(particles/cm³)", legend_x + bar_width / 2, legend_y + bar_height + 10,
                         font_size=9, bold=False, centered=True)
 
-    def draw_grid(self, ctx):
-        """Draw lat/lon grid lines on the map for debugging alignment."""
-        CGContextSetStrokeColorWithColor(ctx, self.create_color(1, 0, 0, 0.7))
-        CGContextSetLineWidth(ctx, 1.5)
-
-        # Draw longitude lines (vertical)
+    def draw_coord_labels(self, ctx):
+        """Draw lat/lon labels on the map edges."""
+        # Draw longitude labels (at bottom)
         lon_start = -71.04
         lon_end = -70.96
-        lon_step = 0.01
+        lon_step = 0.02
         lon = lon_start
         while lon <= lon_end:
             p1 = self.geo_to_pixel(lon, self.map_extent.lat_min)
-            p2 = self.geo_to_pixel(lon, self.map_extent.lat_max)
-            CGContextMoveToPoint(ctx, p1[0], p1[1])
-            CGContextAddLineToPoint(ctx, p2[0], p2[1])
-            CGContextStrokePath(ctx)
-            # Label
             self.draw_label(ctx, f"{lon:.2f}", p1[0], p1[1] - 10,
                            font_size=9, bold=True, bg_color=self.create_color(1, 1, 1, 0.9))
             lon += lon_step
 
-        # Draw latitude lines (horizontal)
+        # Draw latitude labels (at left)
         lat_start = 42.35
         lat_end = 42.40
-        lat_step = 0.01
+        lat_step = 0.02
         lat = lat_start
         while lat <= lat_end:
             p1 = self.geo_to_pixel(self.map_extent.lon_min, lat)
-            p2 = self.geo_to_pixel(self.map_extent.lon_max, lat)
-            CGContextMoveToPoint(ctx, p1[0], p1[1])
-            CGContextAddLineToPoint(ctx, p2[0], p2[1])
-            CGContextStrokePath(ctx)
-            # Label
             self.draw_label(ctx, f"{lat:.2f}", p1[0] + 25, p1[1],
                            font_size=9, bold=True, bg_color=self.create_color(1, 1, 1, 0.9))
             lat += lat_step
@@ -429,6 +416,9 @@ class Renderer:
         if self.base_map_image:
             CGContextDrawImage(ctx, CGRectMake(self.map_x, self.map_y, self.map_width, self.map_height),
                              self.base_map_image)
+
+        # Draw coordinate labels
+        self.draw_coord_labels(ctx)
 
         # Draw sensor circles first
         for sensor in frame.sensors:
