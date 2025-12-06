@@ -550,30 +550,26 @@ class Renderer:
         CGContextClosePath(ctx)
         CGContextStrokePath(ctx)
 
-    def draw_average_wind(self, ctx, sensors):
-        """Draw average wind indicator in center of map."""
+    def draw_wind_indicator(self, ctx, sensors):
+        """Draw wind indicator in center of map (from weather station data)."""
         if not sensors:
             return
 
-        # Calculate vector average of wind directions
-        u_sum, v_sum, speed_sum = 0, 0, 0
-        count = 0
+        # Get wind from first sensor (all sensors have same station wind data)
+        wind_dir = None
+        wind_speed = None
         for sensor in sensors:
-            lon, lat, pollution, wind_dir, wind_speed, sensor_id = sensor
-            if wind_speed > 0.1:
-                # Convert to radians (meteorological: 0=N, 90=E)
-                rad = math.radians(wind_dir)
-                u_sum += wind_speed * math.sin(rad)
-                v_sum += wind_speed * math.cos(rad)
-                speed_sum += wind_speed
-                count += 1
+            lon, lat, pollution, wd, ws, sensor_id = sensor
+            if not math.isnan(ws) if ws is not None else False:
+                wind_speed = ws
+                wind_dir = wd if (wd is not None and not math.isnan(wd)) else None
+                break
 
-        if count == 0:
+        if wind_speed is None:
             return
 
-        # Average direction (where wind comes FROM)
-        avg_dir = math.degrees(math.atan2(u_sum, v_sum)) % 360
-        avg_speed = speed_sum / count
+        # Check if calm (very low wind)
+        is_calm = wind_speed <= 0.1 or wind_dir is None
 
         # Center of map
         center_x = self.map_x + self.map_width / 2
@@ -591,17 +587,24 @@ class Renderer:
                                                    bg_radius * 2, bg_radius * 2))
         CGContextStrokePath(ctx)
 
-        # Draw wind arrow from center
-        self.draw_wind_arrow(ctx, center_x, center_y, avg_dir, avg_speed, bg_radius)
+        # Draw wind arrow from center (if not calm)
+        if not is_calm:
+            self.draw_wind_arrow(ctx, center_x, center_y, wind_dir, wind_speed, bg_radius)
 
         # Wind speed label inside circle
-        speed_label = f"{avg_speed:.1f} m/s"
+        if is_calm:
+            speed_label = "Calm"
+        else:
+            speed_label = f"{wind_speed:.1f} m/s"
         self.draw_label(ctx, speed_label, center_x, center_y - 5,
                        font_size=14.5, bold=True, bg_color=self.create_color(1, 1, 1, 0.9))
 
-        # Label below circle
-        self.draw_label(ctx, "Avg Wind", center_x, center_y + bg_radius + 20,
-                       font_size=14.5, bold=True, bg_color=self.create_color(1, 1, 1, 0.85))
+        # Label above circle
+        self.draw_label(ctx, "Wind Speed", center_x, center_y + bg_radius + 20,
+                       font_size=14, bold=True, bg_color=self.create_color(1, 1, 1, 0.85))
+        # Station info below circle
+        self.draw_label(ctx, "HOU ASOS (29.64, -95.28)", center_x, center_y - bg_radius - 18,
+                       font_size=10, bold=False, bg_color=self.create_color(1, 1, 1, 0.8))
 
     def render_frame(self, frame) -> bytes:
         """Render a single frame."""
@@ -639,16 +642,27 @@ class Renderer:
         for sensor in frame.sensors:
             lon, lat, pollution, wind_dir, wind_speed, sensor_id = sensor
             pos = self.geo_to_pixel(lon, lat)
-            size = self.get_circle_size(pollution)
-            color = self.get_plasma_color(pollution)
+
+            # Check for missing data (NaN)
+            is_na = math.isnan(pollution) if pollution is not None else True
+
+            if is_na:
+                # Use minimum size and gray color for NA
+                size = self.circle_min
+                color = (0.5, 0.5, 0.5)  # Gray
+                alpha = 0.5
+            else:
+                size = self.get_circle_size(pollution)
+                color = self.get_plasma_color(pollution)
+                alpha = 0.9
 
             # Main circle
-            CGContextSetFillColorWithColor(ctx, self.create_color(*color, 0.9))
+            CGContextSetFillColorWithColor(ctx, self.create_color(*color, alpha))
             CGContextAddEllipseInRect(ctx, CGRectMake(pos[0] - size/2, pos[1] - size/2, size, size))
             CGContextFillPath(ctx)
 
             # Circle border
-            CGContextSetStrokeColorWithColor(ctx, self.create_color(*color, 1.0))
+            CGContextSetStrokeColorWithColor(ctx, self.create_color(*color, min(1.0, alpha + 0.1)))
             CGContextSetLineWidth(ctx, 2.5)
             CGContextAddEllipseInRect(ctx, CGRectMake(pos[0] - size/2, pos[1] - size/2, size, size))
             CGContextStrokePath(ctx)
@@ -658,7 +672,10 @@ class Renderer:
 
         for i, (pos, sensor) in enumerate(sensor_positions):
             lon, lat, pollution, wind_dir, wind_speed, sensor_id = sensor
-            size = self.get_circle_size(pollution)
+
+            # Check for missing data (NaN)
+            is_na = math.isnan(pollution) if pollution is not None else True
+            size = self.circle_min if is_na else self.get_circle_size(pollution)
 
             # Check if this sensor overlaps with others and calculate offset
             x_offset = 0
@@ -679,17 +696,20 @@ class Renderer:
             self.draw_label(ctx, sensor_name, label_x, pos[1] - size/2 - 18,
                            font_size=14.5, bold=True, bg_color=self.create_color(1, 1, 1, 0.9))
 
-            # Pollution value below sensor name
-            short_unit = self.pollution_type.unit.split('/')[0].replace('particles', 'p') + '/' + self.pollution_type.unit.split('/')[-1] if '/' in self.pollution_type.unit else self.pollution_type.unit
-            if pollution >= 1000:
-                label = f"{pollution/1000:.1f}K {short_unit}"
+            # Pollution value below sensor name (or "NA" if missing)
+            if is_na:
+                label = "NA"
             else:
-                label = f"{pollution:.0f} {short_unit}"
+                short_unit = self.pollution_type.unit.split('/')[0].replace('particles', 'p') + '/' + self.pollution_type.unit.split('/')[-1] if '/' in self.pollution_type.unit else self.pollution_type.unit
+                if pollution >= 1000:
+                    label = f"{pollution/1000:.1f}K {short_unit}"
+                else:
+                    label = f"{pollution:.0f} {short_unit}"
             self.draw_label(ctx, label, label_x, pos[1] - size/2 - 40,
                            font_size=14.5, bold=True, bg_color=self.create_color(1, 1, 1, 0.85))
 
-        # Draw average wind indicator in center
-        self.draw_average_wind(ctx, frame.sensors)
+        # Draw wind indicator in center (from weather station)
+        self.draw_wind_indicator(ctx, frame.sensors)
 
         # Title
         self.draw_title(ctx, frame.date_label, frame.time_label)

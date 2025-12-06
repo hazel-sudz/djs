@@ -218,6 +218,8 @@ def create_ecagp_config() -> SiteConfig:
             "MOD-PM-01396": "MOD-PM-01396",
             "MOD-PM-01395": "MOD-PM-01395",
         },
+        circle_min=70,   # Smaller circles since sensors are close together
+        circle_max=140,
         wind_speed_max=6.0,
         coord_label_step=0.02,
         # Hardcoded map extent (expanded view):
