@@ -641,29 +641,39 @@ class Renderer:
             CGContextAddEllipseInRect(ctx, CGRectMake(pos[0] - size/2, pos[1] - size/2, size, size))
             CGContextStrokePath(ctx)
 
-        # Draw wind arrows on top (starting from edge of circles)
-        for sensor in frame.sensors:
-            lon, lat, pollution, wind_dir, wind_speed, sensor_id = sensor
-            pos = self.geo_to_pixel(lon, lat)
-            circle_size = self.get_circle_size(pollution)
-            self.draw_wind_arrow(ctx, pos[0], pos[1], wind_dir, wind_speed, circle_size / 2)
+        # Draw labels on circles - with offset for overlapping sensors
+        sensor_positions = [(self.geo_to_pixel(s[0], s[1]), s) for s in frame.sensors]
 
-        # Draw labels on circles
-        for sensor in frame.sensors:
+        for i, (pos, sensor) in enumerate(sensor_positions):
             lon, lat, pollution, wind_dir, wind_speed, sensor_id = sensor
-            pos = self.geo_to_pixel(lon, lat)
             size = self.get_circle_size(pollution)
-            # Sensor name in center of circle
+
+            # Check if this sensor overlaps with others and calculate offset
+            x_offset = 0
+            y_offset = 0
+            for j, (other_pos, other_sensor) in enumerate(sensor_positions):
+                if i != j:
+                    dist = math.sqrt((pos[0] - other_pos[0])**2 + (pos[1] - other_pos[1])**2)
+                    if dist < 120:  # Sensors are close
+                        # Offset labels horizontally based on relative position
+                        if pos[0] < other_pos[0]:
+                            x_offset = -60  # This sensor is to the left, offset label left
+                        else:
+                            x_offset = 60   # This sensor is to the right, offset label right
+
+            # Sensor name - offset if needed
             sensor_name = self.site_config.get_sensor_display_name(sensor_id)
-            self.draw_label(ctx, sensor_name, pos[0], pos[1] - 5,
+            label_x = pos[0] + x_offset
+            self.draw_label(ctx, sensor_name, label_x, pos[1] - size/2 - 18,
                            font_size=14.5, bold=True, bg_color=self.create_color(1, 1, 1, 0.9))
-            # Pollution value below sensor name - use short unit for label
+
+            # Pollution value below sensor name
             short_unit = self.pollution_type.unit.split('/')[0].replace('particles', 'p') + '/' + self.pollution_type.unit.split('/')[-1] if '/' in self.pollution_type.unit else self.pollution_type.unit
             if pollution >= 1000:
                 label = f"{pollution/1000:.1f}K {short_unit}"
             else:
                 label = f"{pollution:.0f} {short_unit}"
-            self.draw_label(ctx, label, pos[0], pos[1] + size/2 + 18,
+            self.draw_label(ctx, label, label_x, pos[1] - size/2 - 40,
                            font_size=14.5, bold=True, bg_color=self.create_color(1, 1, 1, 0.85))
 
         # Draw average wind indicator in center

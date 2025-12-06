@@ -223,13 +223,13 @@ def create_ecagp_config() -> SiteConfig:
         # Hardcoded map extent (expanded view):
         # North: Jacinto City / I-10
         # South: Harrisburg / south of Buffalo Bayou
-        # West: I-610 / Clinton Park Tri-Community
+        # West: Trimmed to focus on Galena Park area
         # East: Greens Port / ship channel
         hardcoded_extent=MapExtent(
-            lat_min=29.70,
-            lat_max=29.78,
-            lon_min=-95.32,
-            lon_max=-95.14
+            lat_min=29.705,
+            lat_max=29.77,
+            lon_min=-95.26,
+            lon_max=-95.145
         ),
         output_dir="output",
     )
