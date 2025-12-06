@@ -9,6 +9,11 @@ Usage:
     # Render Eastie UFP (default)
     uv run python render.py
 
+    # Render ALL sites with appropriate settings:
+    # - Eastie: single video, UFP
+    # - ECAGP: weekly videos, all 3 pollution types (PM1, PM2.5, PM10)
+    uv run python render.py --all-sites
+
     # Render specific site
     uv run python render.py --site eastie
     uv run python render.py --site ecagp
@@ -288,6 +293,8 @@ def main():
     parser.add_argument("--height", type=int, default=1920, help="Frame height")
     parser.add_argument("--fps", type=float, default=32.0, help="Frames per second")
     parser.add_argument("--list-sites", action="store_true", help="List available sites and exit")
+    parser.add_argument("--all-sites", action="store_true",
+                        help="Render all sites (Eastie: single video, ECAGP: weekly videos for all pollution types)")
     args = parser.parse_args()
 
     # List sites if requested
@@ -300,6 +307,40 @@ def main():
                 print(f"    - {pt.name}: {pt.display_name}")
         return
 
+    # Handle --all-sites: render all sites with appropriate settings
+    if args.all_sites:
+        print("\n" + "="*60)
+        print("  Rendering All Sites")
+        print("="*60)
+        total_start_all = time.time()
+
+        # Eastie: single video, UFP only
+        print("\n>>> Rendering East Boston (single video, UFP)...")
+        args.site = "eastie"
+        args.all = False
+        args.weekly = False
+        render_site(args)
+
+        # ECAGP: weekly videos, all pollution types
+        print("\n>>> Rendering Galena Park (weekly videos, all pollution types)...")
+        args.site = "ecagp"
+        args.all = True
+        args.weekly = True
+        render_site(args)
+
+        elapsed = time.time() - total_start_all
+        print("\n" + "="*60)
+        print("  All Sites Complete!")
+        print("="*60)
+        print(f"\nTotal time: {elapsed:.1f}s ({elapsed/60:.1f} min)")
+        return
+
+    # Single site mode
+    render_site(args)
+
+
+def render_site(args):
+    """Render a single site with the given arguments."""
     # Get site config
     try:
         site_config = get_site_config(args.site)
