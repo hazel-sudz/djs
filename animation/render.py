@@ -144,9 +144,14 @@ def render_animation(site_config: SiteConfig, pollution_type: PollutionType,
     base_map_path = output_dir / f"{site_config.name}_base_map.png"
     map_extent = site_config.get_map_extent()
 
+    # Calculate actual map dimensions (accounting for margins in renderer)
+    map_width = args.width - Renderer.LEFT_MARGIN - Renderer.RIGHT_MARGIN
+    map_height = args.height - Renderer.HEADER_HEIGHT - Renderer.FOOTER_HEIGHT
+
     if not base_map_path.exists():
         print("\nCreating base map...")
-        create_base_map(map_extent, str(base_map_path), args.width, args.height, zoom=15)
+        # Create at map dimensions (not full frame) to avoid aspect ratio distortion
+        create_base_map(map_extent, str(base_map_path), map_width, map_height, zoom=15)
     else:
         print(f"\nUsing existing base map: {base_map_path}")
 

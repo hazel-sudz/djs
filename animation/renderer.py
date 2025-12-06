@@ -41,6 +41,7 @@ from Quartz import (
     CGContextSetAllowsAntialiasing,
     CGContextSetShouldAntialias,
     CGContextSetInterpolationQuality,
+    CGContextClip,
     CGImageDestinationCreateWithURL,
     CGImageDestinationAddImage,
     CGImageDestinationFinalize,
@@ -284,6 +285,12 @@ class Renderer:
         if self.site_config.name != "ecagp":
             return
 
+        # Set clipping rectangle to map bounds so overlays don't draw outside
+        CGContextSaveGState(ctx)
+        CGContextBeginPath(ctx)
+        CGContextAddRect(ctx, CGRectMake(self.map_x, self.map_y, self.map_width, self.map_height))
+        CGContextClip(ctx)
+
         # Galena Park boundary - exact coordinates from OpenStreetMap
         galena_park_boundary = [
             (-95.2517032, 29.7598861),
@@ -350,7 +357,7 @@ class Renderer:
         CGContextStrokePath(ctx)
         CGContextRestoreGState(ctx)
 
-        # Galena Park label - positioned ABOVE the outline
+        # Galena Park label - positioned above the outline
         gp_label_pos = self.geo_to_pixel(-95.230, 29.763)
         self.draw_label(ctx, "Galena Park", gp_label_pos[0], gp_label_pos[1],
                        font_size=18, bold=True, bg_color=self.create_color(1, 1, 1, 0.85))
@@ -400,7 +407,7 @@ class Renderer:
         CGContextRestoreGState(ctx)
 
         # Houston Ship Channel label - on the waterway
-        ship_channel_pos = self.geo_to_pixel(-95.175, 29.745)
+        ship_channel_pos = self.geo_to_pixel(-95.185, 29.748)
         self.draw_label(ctx, "Houston Ship Channel", ship_channel_pos[0], ship_channel_pos[1],
                        font_size=14, bold=True, bg_color=self.create_color(0.85, 0.95, 1.0, 0.9))
 
@@ -443,6 +450,9 @@ class Renderer:
             self.draw_label(ctx, name, px, py - 18,
                            font_size=11, bold=True, bg_color=self.create_color(1, 0.95, 0.85, 0.9))
 
+        # Restore state to remove clipping
+        CGContextRestoreGState(ctx)
+
     def draw_coord_labels(self, ctx):
         """Draw lat/lon labels on the map edges."""
         # Get coordinate ranges from config
@@ -451,8 +461,9 @@ class Renderer:
 
         # Draw longitude labels (at bottom)
         # Skip first label to avoid overlap with latitude labels in bottom-left corner
+        # Skip last label to avoid running off the right edge
         lon = lon_start + step
-        while lon <= lon_end + step / 2:  # Small tolerance for floating point
+        while lon < lon_end - step / 2:  # Stop before the last label
             p1 = self.geo_to_pixel(lon, self.map_extent.lat_min)
             self.draw_label(ctx, f"{lon:.2f}", p1[0], p1[1] - 12,
                            font_size=14.5, bold=True, bg_color=self.create_color(1, 1, 1, 0.9))
