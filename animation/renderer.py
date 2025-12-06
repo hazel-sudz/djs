@@ -223,7 +223,7 @@ class Renderer:
 
     def draw_title(self, ctx, date_label: str, time_label: str):
         """Draw title with site name, pollution type, date and time."""
-        title_y = self.height - 35
+        title_y = self.height - 56  # More margin from top
         # Include site name in title
         title_text = f"{self.site_config.display_name} — {self.pollution_type.display_name} — {self.pollution_type.unit}"
         self.draw_label(ctx, title_text, self.width / 2, title_y,
@@ -469,16 +469,19 @@ class Renderer:
                            font_size=23, bold=True, bg_color=self.create_color(1, 1, 1, 0.9))
             lon += step
 
-        # Draw latitude labels (at left edge, outside the map like longitude labels are below)
+        # Draw latitude labels (at left edge, half on border like longitude labels)
         # Use smaller step for latitude to get more labels (vertical range is usually smaller)
         lat_step = step / 2  # 0.01 instead of 0.02
         # Skip first label to match the skipped longitude label in corner
         lat = lat_start + lat_step
         while lat <= lat_end + lat_step / 2:  # Small tolerance for floating point
             p1 = self.geo_to_pixel(self.map_extent.lon_min, lat)
-            # Position label to the left of map edge (like lon labels are below map edge)
-            # Right-align so the label ends at the map edge
-            self.draw_label(ctx, f"{lat:.2f}", p1[0] - 8, p1[1],
+            # Skip if label would be too close to top or bottom edge of frame
+            if p1[1] < 30 or p1[1] > self.height - 30:
+                lat += lat_step
+                continue
+            # Position label so right edge is at map border (half on, half outside)
+            self.draw_label(ctx, f"{lat:.2f}", p1[0], p1[1] - 8,
                            font_size=23, bold=True, bg_color=self.create_color(1, 1, 1, 0.9),
                            anchor="right")
             lat += lat_step
@@ -602,8 +605,11 @@ class Renderer:
         # Label above circle
         self.draw_label(ctx, "Wind Speed", center_x, center_y + bg_radius + 32,
                        font_size=22, bold=True, bg_color=self.create_color(1, 1, 1, 0.85))
-        # Station info below circle
-        self.draw_label(ctx, "HOU ASOS (29.64, -95.28)", center_x, center_y - bg_radius - 29,
+        # Station info below circle (from site config)
+        station_name = self.site_config.wind_station_name
+        station_lat, station_lon = self.site_config.wind_station_coords
+        station_label = f"{station_name} ({station_lat:.2f}, {station_lon:.2f})"
+        self.draw_label(ctx, station_label, center_x, center_y - bg_radius - 29,
                        font_size=16, bold=False, bg_color=self.create_color(1, 1, 1, 0.8))
 
     def render_frame(self, frame) -> bytes:
@@ -690,23 +696,35 @@ class Renderer:
                         else:
                             x_offset = 96   # This sensor is to the right, offset label right
 
-            # Sensor name - offset if needed
+            # Sensor name and pollution value labels
             sensor_name = self.site_config.get_sensor_display_name(sensor_id)
             label_x = pos[0] + x_offset
-            self.draw_label(ctx, sensor_name, label_x, pos[1] - size/2 - 29,
-                           font_size=23, bold=True, bg_color=self.create_color(1, 1, 1, 0.9))
 
-            # Pollution value below sensor name (or "NA" if missing)
+            # Pollution value label (or "NA" if missing)
             if is_na:
-                label = "NA"
+                pollution_label = "NA"
             else:
                 short_unit = self.pollution_type.unit.split('/')[0].replace('particles', 'p') + '/' + self.pollution_type.unit.split('/')[-1] if '/' in self.pollution_type.unit else self.pollution_type.unit
                 if pollution >= 1000:
-                    label = f"{pollution/1000:.1f}K {short_unit}"
+                    pollution_label = f"{pollution/1000:.1f}K {short_unit}"
                 else:
-                    label = f"{pollution:.0f} {short_unit}"
-            self.draw_label(ctx, label, label_x, pos[1] - size/2 - 64,
-                           font_size=23, bold=True, bg_color=self.create_color(1, 1, 1, 0.85))
+                    pollution_label = f"{pollution:.0f} {short_unit}"
+
+            # For Eastie: sensor name at bottom, pollution at top
+            # For other sites: both labels above the circle
+            if self.site_config.name == "eastie":
+                # Pollution at top
+                self.draw_label(ctx, pollution_label, label_x, pos[1] + size/2 + 40,
+                               font_size=23, bold=True, bg_color=self.create_color(1, 1, 1, 0.85))
+                # Sensor name at bottom
+                self.draw_label(ctx, sensor_name, label_x, pos[1] - size/2 - 40,
+                               font_size=23, bold=True, bg_color=self.create_color(1, 1, 1, 0.9))
+            else:
+                # Both above circle (sensor name closer, pollution further up)
+                self.draw_label(ctx, sensor_name, label_x, pos[1] - size/2 - 29,
+                               font_size=23, bold=True, bg_color=self.create_color(1, 1, 1, 0.9))
+                self.draw_label(ctx, pollution_label, label_x, pos[1] - size/2 - 64,
+                               font_size=23, bold=True, bg_color=self.create_color(1, 1, 1, 0.85))
 
         # Draw wind indicator in center (from weather station)
         self.draw_wind_indicator(ctx, frame.sensors)

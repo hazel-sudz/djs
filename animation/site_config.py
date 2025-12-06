@@ -62,6 +62,8 @@ class SiteConfig:
 
     # Wind configuration
     wind_speed_max: float = 4.0  # Max wind speed for visualization scaling
+    wind_station_name: str = "ASOS"  # Weather station name for wind data
+    wind_station_coords: Tuple[float, float] = (0.0, 0.0)  # (lat, lon) of weather station
 
     # Map configuration
     map_padding: float = 0.015   # Padding around sensors in degrees
@@ -155,6 +157,8 @@ def create_eastie_config() -> SiteConfig:
             "MOD-UFP-00009": "MOD-UFP-00009",
         },
         wind_speed_max=4.0,
+        wind_station_name="BOS ASOS",
+        wind_station_coords=(42.37, -71.02),  # Boston Logan Airport
         output_dir="output",
     )
 
@@ -221,6 +225,8 @@ def create_ecagp_config() -> SiteConfig:
         circle_min=112,   # Smaller circles since sensors are close together (scaled for 2880x1920)
         circle_max=224,
         wind_speed_max=6.0,
+        wind_station_name="HOU ASOS",
+        wind_station_coords=(29.64, -95.28),  # Houston Hobby Airport
         coord_label_step=0.02,
         # Hardcoded map extent (expanded view):
         # North: Jacinto City / I-10
