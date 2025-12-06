@@ -454,36 +454,47 @@ class Renderer:
         CGContextRestoreGState(ctx)
 
     def draw_coord_labels(self, ctx):
-        """Draw lat/lon labels on the map edges."""
-        # Get coordinate ranges from config
-        (lon_start, lon_end), (lat_start, lat_end) = self.site_config.get_coord_label_ranges()
-        step = self.site_config.coord_label_step
+        """Draw lat/lon labels on the map edges.
 
-        # Draw longitude labels (at bottom)
-        # Skip first label to avoid overlap with latitude labels in bottom-left corner
-        # Skip last label to avoid running off the right edge
-        lon = lon_start + step
-        while lon < lon_end - step / 2:  # Stop before the last label
-            p1 = self.geo_to_pixel(lon, self.map_extent.lat_min)
+        Uses proper math to ensure:
+        1. All labels are at nice round values (multiples of step)
+        2. All labels are strictly inside the map extent
+        3. No corner overlap (margin keeps labels away from edges)
+        4. No labels running off the frame
+        """
+        import math
+
+        extent = self.map_extent
+        lon_step = self.site_config.coord_label_step  # e.g., 0.02
+        lat_step = self.site_config.coord_label_step / 2  # e.g., 0.01 (finer for vertical)
+
+        # Margin keeps labels away from edges - use full step for symmetric appearance
+        lon_margin = lon_step
+        lat_margin = lat_step
+
+        # Calculate longitude label range: first nice value INSIDE map, last nice value INSIDE map
+        lon_start = math.ceil((extent.lon_min + lon_margin) / lon_step) * lon_step
+        lon_end = math.floor((extent.lon_max - lon_margin) / lon_step) * lon_step
+
+        # Calculate latitude label range with its own step
+        lat_start = math.ceil((extent.lat_min + lat_margin) / lat_step) * lat_step
+        lat_end = math.floor((extent.lat_max - lat_margin) / lat_step) * lat_step
+
+        # Draw longitude labels (at bottom, centered on coordinate)
+        lon = lon_start
+        while lon <= lon_end + lon_step / 4:  # Small tolerance for floating point
+            p1 = self.geo_to_pixel(lon, extent.lat_min)
             self.draw_label(ctx, f"{lon:.2f}", p1[0], p1[1] - 19,
                            font_size=23, bold=True, bg_color=self.create_color(1, 1, 1, 0.9))
-            lon += step
+            lon += lon_step
 
-        # Draw latitude labels (at left edge, half on border like longitude labels)
-        # Use smaller step for latitude to get more labels (vertical range is usually smaller)
-        lat_step = step / 2  # 0.01 instead of 0.02
-        # Skip first label to match the skipped longitude label in corner
-        lat = lat_start + lat_step
-        while lat <= lat_end + lat_step / 2:  # Small tolerance for floating point
-            p1 = self.geo_to_pixel(self.map_extent.lon_min, lat)
-            # Skip if label would be too close to top or bottom edge of frame
-            if p1[1] < 30 or p1[1] > self.height - 30:
-                lat += lat_step
-                continue
-            # Position label so right edge is at map border (half on, half outside)
+        # Draw latitude labels (at left edge, centered on border)
+        lat = lat_start
+        while lat <= lat_end + lat_step / 4:  # Small tolerance for floating point
+            p1 = self.geo_to_pixel(extent.lon_min, lat)
             self.draw_label(ctx, f"{lat:.2f}", p1[0], p1[1] - 8,
                            font_size=23, bold=True, bg_color=self.create_color(1, 1, 1, 0.9),
-                           anchor="right")
+                           anchor="center")
             lat += lat_step
 
     def draw_wind_arrow(self, ctx, x: float, y: float, wind_dir: float, wind_speed: float, circle_radius: float = 0):

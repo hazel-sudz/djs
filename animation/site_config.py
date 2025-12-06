@@ -159,6 +159,7 @@ def create_eastie_config() -> SiteConfig:
         wind_speed_max=4.0,
         wind_station_name="BOS ASOS",
         wind_station_coords=(42.37, -71.02),  # Boston Logan Airport
+        coord_label_step=0.01,  # Finer step for smaller map extent
         output_dir="output",
     )
 
