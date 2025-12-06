@@ -151,7 +151,7 @@ def render_animation(site_config: SiteConfig, pollution_type: PollutionType,
     if not base_map_path.exists():
         print("\nCreating base map...")
         # Create at map dimensions (not full frame) to avoid aspect ratio distortion
-        create_base_map(map_extent, str(base_map_path), map_width, map_height, zoom=17)
+        create_base_map(map_extent, str(base_map_path), map_width, map_height, zoom=16)
     else:
         print(f"\nUsing existing base map: {base_map_path}")
 
