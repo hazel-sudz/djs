@@ -164,7 +164,7 @@ class Renderer:
         # Normalize to visual range, not data range
         norm = (pollution - self.POLLUTION_VIS_MIN) / (self.POLLUTION_VIS_MAX - self.POLLUTION_VIS_MIN)
         norm = max(0, min(1, norm))
-        return 80 + norm * 120  # 80-200 pixels (bigger circles)
+        return 110 + norm * 110  # 110-220 pixels (bigger minimum to fit sensor label)
 
     def draw_label(self, ctx, text: str, x: float, y: float, font_size: float = 12,
                    bold: bool = True, bg_color=None, padding: float = 4, centered: bool = True):
@@ -213,7 +213,7 @@ class Renderer:
     def draw_legend(self, ctx):
         """Draw color scale legend, centered in the right margin."""
         bar_width = 25
-        bar_height = 220
+        bar_height = 410  # 75% taller than original
         # Center legend horizontally in the right margin (accounting for labels on right side)
         margin_center_x = self.width - self.RIGHT_MARGIN / 2
         legend_x = margin_center_x - bar_width / 2 - 15  # Offset left to account for right-side labels
@@ -241,15 +241,15 @@ class Renderer:
         tick_values = [2000, 25000, 50000, 75000, 100000, 125000, 150000]
         for val in tick_values:
             t = (val - self.POLLUTION_VIS_MIN) / (self.POLLUTION_VIS_MAX - self.POLLUTION_VIS_MIN)
-            y_pos = legend_y + t * bar_height - 4
+            y_pos = legend_y + t * bar_height - 6
             text = f"{val/1000:.0f}K"
-            self.draw_label(ctx, text, legend_x + bar_width + 8, y_pos, font_size=10, bold=False, centered=False)
+            self.draw_label(ctx, text, legend_x + bar_width + 15, y_pos, font_size=14.5, bold=False, centered=False)
 
         # Title
-        self.draw_label(ctx, "Concentration", legend_x + bar_width / 2, legend_y + bar_height + 25,
-                        font_size=10, bold=True, centered=True)
-        self.draw_label(ctx, "(particles/cm³)", legend_x + bar_width / 2, legend_y + bar_height + 10,
-                        font_size=9, bold=False, centered=True)
+        self.draw_label(ctx, "Concentration", legend_x + bar_width / 2, legend_y + bar_height + 45,
+                        font_size=16, bold=True, centered=True)
+        self.draw_label(ctx, "(particles/cm³)", legend_x + bar_width / 2, legend_y + bar_height + 22,
+                        font_size=14.5, bold=False, centered=True)
 
     def draw_coord_labels(self, ctx):
         """Draw lat/lon labels on the map edges."""
@@ -260,8 +260,8 @@ class Renderer:
         lon = lon_start
         while lon <= lon_end:
             p1 = self.geo_to_pixel(lon, self.map_extent.lat_min)
-            self.draw_label(ctx, f"{lon:.2f}", p1[0], p1[1] - 10,
-                           font_size=9, bold=True, bg_color=self.create_color(1, 1, 1, 0.9))
+            self.draw_label(ctx, f"{lon:.2f}", p1[0], p1[1] - 12,
+                           font_size=14.5, bold=True, bg_color=self.create_color(1, 1, 1, 0.9))
             lon += lon_step
 
         # Draw latitude labels (at left)
@@ -271,8 +271,8 @@ class Renderer:
         lat = lat_start
         while lat <= lat_end:
             p1 = self.geo_to_pixel(self.map_extent.lon_min, lat)
-            self.draw_label(ctx, f"{lat:.2f}", p1[0] + 25, p1[1],
-                           font_size=9, bold=True, bg_color=self.create_color(1, 1, 1, 0.9))
+            self.draw_label(ctx, f"{lat:.2f}", p1[0] + 30, p1[1],
+                           font_size=14.5, bold=True, bg_color=self.create_color(1, 1, 1, 0.9))
             lat += lat_step
 
     def draw_wind_arrow(self, ctx, x: float, y: float, wind_dir: float, wind_speed: float, circle_radius: float = 0):
@@ -389,11 +389,11 @@ class Renderer:
         # Wind speed label inside circle
         speed_label = f"{avg_speed:.1f} m/s"
         self.draw_label(ctx, speed_label, center_x, center_y - 5,
-                       font_size=11, bold=True, bg_color=self.create_color(1, 1, 1, 0.9))
+                       font_size=14.5, bold=True, bg_color=self.create_color(1, 1, 1, 0.9))
 
         # Label below circle
-        self.draw_label(ctx, "Avg Wind", center_x, center_y + bg_radius + 16,
-                       font_size=10, bold=True, bg_color=self.create_color(1, 1, 1, 0.85))
+        self.draw_label(ctx, "Avg Wind", center_x, center_y + bg_radius + 20,
+                       font_size=14.5, bold=True, bg_color=self.create_color(1, 1, 1, 0.85))
 
     def render_frame(self, frame) -> bytes:
         """Render a single frame."""
@@ -457,11 +457,11 @@ class Renderer:
             # Sensor name in center of circle
             sensor_name = self.SENSOR_NAMES.get(sensor_id, sensor_id)
             self.draw_label(ctx, sensor_name, pos[0], pos[1] - 5,
-                           font_size=11, bold=True, bg_color=self.create_color(1, 1, 1, 0.9))
+                           font_size=14.5, bold=True, bg_color=self.create_color(1, 1, 1, 0.9))
             # Pollution value below sensor name
             label = f"{pollution/1000:.1f}K p/cm³" if pollution >= 1000 else f"{pollution:.0f} p/cm³"
-            self.draw_label(ctx, label, pos[0], pos[1] + size/2 + 14,
-                           font_size=10, bold=True, bg_color=self.create_color(1, 1, 1, 0.85))
+            self.draw_label(ctx, label, pos[0], pos[1] + size/2 + 18,
+                           font_size=14.5, bold=True, bg_color=self.create_color(1, 1, 1, 0.85))
 
         # Draw average wind indicator in center
         self.draw_average_wind(ctx, frame.sensors)
