@@ -1,13 +1,16 @@
 """
-Data processing for pollution visualization with per-sensor wind vectors.
+Data processing for multi-site pollution visualization with per-sensor wind vectors.
 
 Uses wind direction (wd) and speed (ws) directly.
 """
 
 import pandas as pd
 import numpy as np
-from typing import NamedTuple, Optional
+from typing import NamedTuple, Optional, TYPE_CHECKING
 import math
+
+if TYPE_CHECKING:
+    from site_config import SiteConfig, PollutionType
 
 
 class FrameData(NamedTuple):
@@ -85,15 +88,26 @@ def smooth_wind_direction(times: np.ndarray, directions: np.ndarray,
     return smoothed
 
 
-def process_day(df: pd.DataFrame, target_date: str, sensor_coords: list,
-                       frame_interval_minutes: float = 5.0,
-                       smoothing_sigma_minutes: float = 10.0) -> list:
+def process_day(df: pd.DataFrame, target_date: str, site_config: 'SiteConfig',
+                pollution_type: 'PollutionType',
+                frame_interval_minutes: float = 5.0,
+                smoothing_sigma_minutes: float = 10.0) -> list:
     """
     Process a day's data with simple sensor-level analysis.
+
+    Args:
+        df: DataFrame with pollution and wind data (timestamp column already processed)
+        target_date: Date string in YYYY-MM-DD format
+        site_config: Site configuration object
+        pollution_type: Pollution type configuration
+        frame_interval_minutes: Interval between frames in minutes
+        smoothing_sigma_minutes: Gaussian smoothing sigma in minutes
 
     Returns:
         List of FrameData objects
     """
+    col_map = site_config.column_mapping
+
     # Filter to target date
     target = pd.to_datetime(target_date).date()
     df = df[df['timestamp'].dt.date == target].copy()
@@ -101,26 +115,59 @@ def process_day(df: pd.DataFrame, target_date: str, sensor_coords: list,
     if len(df) == 0:
         return []
 
-    # Get sensor info
-    sensor_dict = {s.sensor: (s.lat, s.lon) for s in sensor_coords}
+    # Get sensor info from config
+    sensor_dict = {s.sensor: (s.lat, s.lon) for s in site_config.sensors}
 
-    # Map sensor coordinates
-    df['sensor_id'] = df['sn.x']
+    # Find and map sensor ID column
+    sensor_col = col_map.sensor_id
+    if sensor_col not in df.columns:
+        for col in ['sn.x', 'sn.y', 'sn', 'sensor_id', 'sensor', 'device_id']:
+            if col in df.columns:
+                sensor_col = col
+                break
+        else:
+            raise ValueError(f"Could not find sensor ID column '{col_map.sensor_id}' in data")
+
+    df['sensor_id'] = df[sensor_col]
     df['lat'] = df['sensor_id'].map(lambda x: sensor_dict.get(x, (None, None))[0])
     df['lon'] = df['sensor_id'].map(lambda x: sensor_dict.get(x, (None, None))[1])
 
-    # Pollution column
-    pollution_col = 'cpc_particle_number_conc_corr.x'
+    # Pollution column from config
+    pollution_col = pollution_type.column
+    if pollution_col not in df.columns:
+        raise ValueError(f"Pollution column '{pollution_col}' not found in data")
     df['pollution'] = pd.to_numeric(df[pollution_col], errors='coerce')
 
-    # Wind columns - use met_wx_wd and met_wx_ws
-    df['wind_dir'] = pd.to_numeric(df['met_wx_wd'], errors='coerce')
-    df['wind_speed'] = pd.to_numeric(df['met_wx_ws'], errors='coerce')
+    # Wind columns from config
+    wind_dir_col = col_map.wind_dir
+    wind_speed_col = col_map.wind_speed
+
+    if wind_dir_col in df.columns:
+        df['wind_dir'] = pd.to_numeric(df[wind_dir_col], errors='coerce')
+    else:
+        # Try fallback columns
+        for col in ['met_wx_wd', 'wd', 'wind_dir', 'wind_direction']:
+            if col in df.columns:
+                df['wind_dir'] = pd.to_numeric(df[col], errors='coerce')
+                break
+        else:
+            df['wind_dir'] = np.nan
+
+    if wind_speed_col in df.columns:
+        df['wind_speed'] = pd.to_numeric(df[wind_speed_col], errors='coerce')
+    else:
+        # Try fallback columns
+        for col in ['met_wx_ws', 'ws', 'wind_speed']:
+            if col in df.columns:
+                df['wind_speed'] = pd.to_numeric(df[col], errors='coerce')
+                break
+        else:
+            df['wind_speed'] = np.nan
 
     # Drop invalid rows
     df = df.dropna(subset=['pollution', 'lat', 'lon', 'sensor_id'])
 
-    # Filter outliers - cap at P99 (~200K) and remove spikes
+    # Filter outliers - cap at P99 and remove spikes
     if len(df) > 0:
         p99 = df['pollution'].quantile(0.99)
         df['rolling_median'] = df.groupby('sensor_id')['pollution'].transform(
@@ -130,9 +177,10 @@ def process_day(df: pd.DataFrame, target_date: str, sensor_coords: list,
         df = df[(df['pollution'] <= p99) & spike_mask]
         df = df.drop(columns=['rolling_median'])
 
-    # Also filter extreme wind speeds (cap at 5 m/s)
+    # Also filter extreme wind speeds (use config's wind_speed_max)
+    wind_cap = site_config.wind_speed_max * 1.25  # Allow 25% above max for filtering
     if len(df) > 0:
-        df = df[df['wind_speed'].isna() | (df['wind_speed'] <= 5)]
+        df = df[df['wind_speed'].isna() | (df['wind_speed'] <= wind_cap)]
 
     if len(df) == 0:
         return []
@@ -230,6 +278,17 @@ def process_day(df: pd.DataFrame, target_date: str, sensor_coords: list,
         ))
 
     return frames
+
+
+# Legacy function for backwards compatibility
+def process_day_legacy(df: pd.DataFrame, target_date: str, sensor_coords: list,
+                       frame_interval_minutes: float = 5.0,
+                       smoothing_sigma_minutes: float = 10.0) -> list:
+    """Legacy interface for process_day. Use process_day() with SiteConfig instead."""
+    from site_config import create_eastie_config
+    config = create_eastie_config()
+    return process_day(df, target_date, config, config.pollution_types[0],
+                       frame_interval_minutes, smoothing_sigma_minutes)
 
 
 def get_pollution_stats(frames: list) -> dict:

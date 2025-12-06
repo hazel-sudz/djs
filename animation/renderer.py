@@ -4,12 +4,17 @@ GPU-accelerated renderer using macOS Quartz/CoreGraphics.
 Features:
 - Pollution circles (size + color)
 - Wind direction arrows from each sensor
+- Multi-site and multi-pollution type support
 """
 
 import math
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 import time
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from site_config import SiteConfig, PollutionType
 
 import Quartz
 from Quartz import (
@@ -52,27 +57,12 @@ import numpy as np
 
 
 class Renderer:
-    """Simple GPU-accelerated frame renderer with wind vectors."""
+    """GPU-accelerated frame renderer with wind vectors and multi-site support."""
 
     HEADER_HEIGHT = 90
     FOOTER_HEIGHT = 40
     LEFT_MARGIN = 30
     RIGHT_MARGIN = 180
-
-    # Normalization ranges (based on data analysis)
-    # Pollution: P1=2K, P99=194K - use 2K-150K for visualization
-    POLLUTION_VIS_MIN = 2000
-    POLLUTION_VIS_MAX = 150000
-
-    # Wind speed: P1=0.04, P99=3.93 - use 0-4 m/s
-    WIND_SPEED_MAX = 4.0
-
-    # Sensor display names (full names)
-    SENSOR_NAMES = {
-        "MOD-UFP-00007": "MOD-UFP-00007",
-        "MOD-UFP-00008": "MOD-UFP-00008",
-        "MOD-UFP-00009": "MOD-UFP-00009",
-    }
 
     # Plasma colormap
     PLASMA_COLORS = [
@@ -87,12 +77,32 @@ class Renderer:
         (0.959, 0.899, 0.101), (0.940, 0.975, 0.131),
     ]
 
-    def __init__(self, width: int, height: int, map_extent, pollution_min: float, pollution_max: float):
+    def __init__(self, width: int, height: int, site_config: 'SiteConfig',
+                 pollution_type: 'PollutionType'):
+        """
+        Initialize renderer with site and pollution type configuration.
+
+        Args:
+            width: Frame width in pixels
+            height: Frame height in pixels
+            site_config: Site configuration object
+            pollution_type: Pollution type configuration
+        """
         self.width = width
         self.height = height
-        self.map_extent = map_extent
-        self.pollution_min = pollution_min
-        self.pollution_max = pollution_max
+        self.site_config = site_config
+        self.pollution_type = pollution_type
+        self.map_extent = site_config.get_map_extent()
+
+        # Visualization ranges from config
+        self.pollution_vis_min = pollution_type.vis_min
+        self.pollution_vis_max = pollution_type.vis_max
+        self.wind_speed_max = site_config.wind_speed_max
+
+        # Circle sizing from config
+        self.circle_min = site_config.circle_min
+        self.circle_max = site_config.circle_max
+
         self.color_space = CGColorSpaceCreateDeviceRGB()
         self.base_map_image = None
 
@@ -101,9 +111,10 @@ class Renderer:
         self.map_width = width - self.LEFT_MARGIN - self.RIGHT_MARGIN
         self.map_height = height - self.HEADER_HEIGHT - self.FOOTER_HEIGHT
 
-        print(f"Renderer initialized")
+        print(f"Renderer initialized for {site_config.display_name} - {pollution_type.display_name}")
         print(f"  Resolution: {width}x{height}")
         print(f"  Map area: {self.map_width}x{self.map_height}")
+        print(f"  Pollution range: {self.pollution_vis_min} - {self.pollution_vis_max} {pollution_type.unit}")
 
     def load_base_map(self, path: str):
         """Load pre-rendered base map image."""
@@ -149,7 +160,7 @@ class Renderer:
     def get_plasma_color(self, pollution: float) -> tuple:
         """Get plasma colormap color for pollution value (normalized to visual range)."""
         # Normalize to visual range for consistent coloring
-        norm = (pollution - self.POLLUTION_VIS_MIN) / (self.POLLUTION_VIS_MAX - self.POLLUTION_VIS_MIN)
+        norm = (pollution - self.pollution_vis_min) / (self.pollution_vis_max - self.pollution_vis_min)
         norm = max(0, min(1, norm))
         idx = norm * (len(self.PLASMA_COLORS) - 1)
         i = int(idx)
@@ -162,9 +173,10 @@ class Renderer:
     def get_circle_size(self, pollution: float) -> float:
         """Get circle size based on pollution level (normalized to visual range)."""
         # Normalize to visual range, not data range
-        norm = (pollution - self.POLLUTION_VIS_MIN) / (self.POLLUTION_VIS_MAX - self.POLLUTION_VIS_MIN)
+        norm = (pollution - self.pollution_vis_min) / (self.pollution_vis_max - self.pollution_vis_min)
         norm = max(0, min(1, norm))
-        return 110 + norm * 110  # 110-220 pixels (bigger minimum to fit sensor label)
+        size_range = self.circle_max - self.circle_min
+        return self.circle_min + norm * size_range
 
     def draw_label(self, ctx, text: str, x: float, y: float, font_size: float = 12,
                    bold: bool = True, bg_color=None, padding: float = 4, centered: bool = True):
@@ -205,7 +217,8 @@ class Renderer:
     def draw_title(self, ctx, date_label: str, time_label: str):
         """Draw title with date and time."""
         title_y = self.height - 35
-        self.draw_label(ctx, "Ultrafine Particle Pollution (UFP) — particles/cm³", self.width / 2, title_y,
+        title_text = f"{self.pollution_type.display_name} — {self.pollution_type.unit}"
+        self.draw_label(ctx, title_text, self.width / 2, title_y,
                         font_size=22, bold=True, centered=True)
         self.draw_label(ctx, f"{date_label}  •  {time_label}", self.width / 2, title_y - 28,
                         font_size=16, bold=False, centered=True)
@@ -226,7 +239,7 @@ class Renderer:
         step_height = bar_height / num_steps
         for i in range(num_steps):
             t = i / (num_steps - 1)
-            pollution = self.POLLUTION_VIS_MIN + t * (self.POLLUTION_VIS_MAX - self.POLLUTION_VIS_MIN)
+            pollution = self.pollution_vis_min + t * (self.pollution_vis_max - self.pollution_vis_min)
             color = self.get_plasma_color(pollution)
             CGContextSetFillColorWithColor(ctx, self.create_color(*color))
             CGContextFillRect(ctx, CGRectMake(legend_x, legend_y + i * step_height, bar_width, step_height + 1))
@@ -237,43 +250,132 @@ class Renderer:
         CGContextAddRect(ctx, CGRectMake(legend_x, legend_y, bar_width, bar_height))
         CGContextStrokePath(ctx)
 
-        # Labels - use visual range with more tick marks
-        tick_values = [2000, 25000, 50000, 75000, 100000, 125000, 150000]
+        # Generate tick values based on pollution range
+        vis_range = self.pollution_vis_max - self.pollution_vis_min
+        num_ticks = 5
+        tick_values = [self.pollution_vis_min + i * vis_range / (num_ticks - 1) for i in range(num_ticks)]
+
         for val in tick_values:
-            t = (val - self.POLLUTION_VIS_MIN) / (self.POLLUTION_VIS_MAX - self.POLLUTION_VIS_MIN)
+            t = (val - self.pollution_vis_min) / (self.pollution_vis_max - self.pollution_vis_min)
             y_pos = legend_y + t * bar_height - 6
-            text = f"{val/1000:.0f}K"
+            # Format based on magnitude
+            if val >= 1000:
+                text = f"{val/1000:.0f}K"
+            else:
+                text = f"{val:.0f}"
             self.draw_label(ctx, text, legend_x + bar_width + 15, y_pos, font_size=14.5, bold=False, centered=False)
 
         # Title
         self.draw_label(ctx, "Concentration", legend_x + bar_width / 2, legend_y + bar_height + 45,
                         font_size=16, bold=True, centered=True)
-        self.draw_label(ctx, "(particles/cm³)", legend_x + bar_width / 2, legend_y + bar_height + 22,
+        self.draw_label(ctx, f"({self.pollution_type.unit})", legend_x + bar_width / 2, legend_y + bar_height + 22,
                         font_size=14.5, bold=False, centered=True)
+
+    def draw_region_overlays(self, ctx):
+        """Draw region outlines and labels (Galena Park boundary, Ship Channel label, etc.)."""
+        # Only draw for ECAGP site
+        if self.site_config.name != "ecagp":
+            return
+
+        # Galena Park boundary - exact coordinates from OpenStreetMap
+        galena_park_boundary = [
+            (-95.2517032, 29.7598861),
+            (-95.2517823, 29.7576073),
+            (-95.25429, 29.7575565),
+            (-95.2542305, 29.7554897),
+            (-95.2541865, 29.7539748),
+            (-95.2541239, 29.7516412),
+            (-95.2540499, 29.7488888),
+            (-95.2539794, 29.746568),
+            (-95.253912, 29.7438133),
+            (-95.253868, 29.7423128),
+            (-95.253814, 29.7406654),
+            (-95.2537783, 29.7392898),
+            (-95.2537501, 29.7381756),
+            (-95.2537156, 29.7368188),
+            (-95.2536511, 29.734074),
+            (-95.2530589, 29.7319111),
+            (-95.2511484, 29.7320686),
+            (-95.2486044, 29.730906),
+            (-95.2462417, 29.72904),
+            (-95.2436713, 29.7265721),
+            (-95.2397213, 29.7281408),
+            (-95.2377438, 29.729271),
+            (-95.2342782, 29.7307764),
+            (-95.2316619, 29.7316009),
+            (-95.2294007, 29.7319424),
+            (-95.2247865, 29.7324079),
+            (-95.2225625, 29.7322554),
+            (-95.2197107, 29.7315873),
+            (-95.2184667, 29.7313177),
+            (-95.2173781, 29.7315032),
+            (-95.2127631, 29.7381002),
+            (-95.2110485, 29.7413623),
+            (-95.2114188, 29.7503271),
+            (-95.2140964, 29.7594558),
+            (-95.2146126, 29.7593),
+            (-95.2159223, 29.7595134),
+            (-95.2178387, 29.7594936),
+            (-95.2269812, 29.7594221),
+            (-95.2298431, 29.7593847),
+            (-95.2320048, 29.7593426),
+            (-95.2342269, 29.7593146),
+            (-95.2380267, 29.759266),
+            (-95.2420682, 29.7599636),
+            (-95.2517032, 29.7598861),
+        ]
+
+        # Draw Galena Park boundary as dashed line
+        CGContextSaveGState(ctx)
+        CGContextSetStrokeColorWithColor(ctx, self.create_color(0.8, 0.2, 0.3, 0.8))
+        CGContextSetLineWidth(ctx, 3)
+        # Set dash pattern
+        Quartz.CGContextSetLineDash(ctx, 0, [8, 6], 2)
+
+        CGContextBeginPath(ctx)
+        first = True
+        for lon, lat in galena_park_boundary:
+            px, py = self.geo_to_pixel(lon, lat)
+            if first:
+                CGContextMoveToPoint(ctx, px, py)
+                first = False
+            else:
+                CGContextAddLineToPoint(ctx, px, py)
+        CGContextClosePath(ctx)
+        CGContextStrokePath(ctx)
+        CGContextRestoreGState(ctx)
+
+        # Galena Park label - positioned inside the boundary, upper area
+        gp_label_pos = self.geo_to_pixel(-95.230, 29.755)
+        self.draw_label(ctx, "Galena Park", gp_label_pos[0], gp_label_pos[1],
+                       font_size=18, bold=True, bg_color=self.create_color(1, 1, 1, 0.85))
+
+        # Houston Ship Channel label - on the waterway in the SE area
+        ship_channel_pos = self.geo_to_pixel(-95.165, 29.735)
+        self.draw_label(ctx, "Houston Ship Channel", ship_channel_pos[0], ship_channel_pos[1],
+                       font_size=14, bold=True, bg_color=self.create_color(0.85, 0.95, 1.0, 0.9))
 
     def draw_coord_labels(self, ctx):
         """Draw lat/lon labels on the map edges."""
+        # Get coordinate ranges from config
+        (lon_start, lon_end), (lat_start, lat_end) = self.site_config.get_coord_label_ranges()
+        step = self.site_config.coord_label_step
+
         # Draw longitude labels (at bottom)
-        lon_start = -71.04
-        lon_end = -70.96
-        lon_step = 0.02
         lon = lon_start
-        while lon <= lon_end:
+        while lon <= lon_end + step / 2:  # Small tolerance for floating point
             p1 = self.geo_to_pixel(lon, self.map_extent.lat_min)
             self.draw_label(ctx, f"{lon:.2f}", p1[0], p1[1] - 12,
                            font_size=14.5, bold=True, bg_color=self.create_color(1, 1, 1, 0.9))
-            lon += lon_step
+            lon += step
 
         # Draw latitude labels (at left)
-        lat_start = 42.35
-        lat_end = 42.40
-        lat_step = 0.02
         lat = lat_start
-        while lat <= lat_end:
+        while lat <= lat_end + step / 2:  # Small tolerance for floating point
             p1 = self.geo_to_pixel(self.map_extent.lon_min, lat)
             self.draw_label(ctx, f"{lat:.2f}", p1[0] + 30, p1[1],
                            font_size=14.5, bold=True, bg_color=self.create_color(1, 1, 1, 0.9))
-            lat += lat_step
+            lat += step
 
     def draw_wind_arrow(self, ctx, x: float, y: float, wind_dir: float, wind_speed: float, circle_radius: float = 0):
         """
@@ -287,7 +389,7 @@ class Renderer:
         angle_rad = math.radians(90 - to_dir)
 
         # Cone dimensions based on wind speed
-        norm_speed = min(1, max(0, wind_speed / self.WIND_SPEED_MAX))
+        norm_speed = min(1, max(0, wind_speed / self.wind_speed_max))
         cone_length = 80 + norm_speed * 60  # 80-140px (shorter, cleaner)
         base_width = 16 + norm_speed * 8  # 16-24px at base
 
@@ -421,6 +523,9 @@ class Renderer:
             CGContextDrawImage(ctx, CGRectMake(self.map_x, self.map_y, self.map_width, self.map_height),
                              self.base_map_image)
 
+        # Draw region overlays (Galena Park boundary, labels)
+        self.draw_region_overlays(ctx)
+
         # Draw coordinate labels
         self.draw_coord_labels(ctx)
 
@@ -455,11 +560,15 @@ class Renderer:
             pos = self.geo_to_pixel(lon, lat)
             size = self.get_circle_size(pollution)
             # Sensor name in center of circle
-            sensor_name = self.SENSOR_NAMES.get(sensor_id, sensor_id)
+            sensor_name = self.site_config.get_sensor_display_name(sensor_id)
             self.draw_label(ctx, sensor_name, pos[0], pos[1] - 5,
                            font_size=14.5, bold=True, bg_color=self.create_color(1, 1, 1, 0.9))
-            # Pollution value below sensor name
-            label = f"{pollution/1000:.1f}K p/cm³" if pollution >= 1000 else f"{pollution:.0f} p/cm³"
+            # Pollution value below sensor name - use short unit for label
+            short_unit = self.pollution_type.unit.split('/')[0].replace('particles', 'p') + '/' + self.pollution_type.unit.split('/')[-1] if '/' in self.pollution_type.unit else self.pollution_type.unit
+            if pollution >= 1000:
+                label = f"{pollution/1000:.1f}K {short_unit}"
+            else:
+                label = f"{pollution:.0f} {short_unit}"
             self.draw_label(ctx, label, pos[0], pos[1] + size/2 + 18,
                            font_size=14.5, bold=True, bg_color=self.create_color(1, 1, 1, 0.85))
 
