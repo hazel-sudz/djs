@@ -79,17 +79,34 @@ class SiteConfig:
     circle_max: float = 352      # Maximum circle size in pixels (scaled for 2880x1920)
 
     def get_map_extent(self) -> MapExtent:
-        """Get map extent - use hardcoded if set, otherwise calculate from sensors."""
+        """Get map extent rounded to step grid for pixel-perfect label alignment.
+
+        The extent is rounded so that edges fall on nice values (multiples of coord_label_step).
+        This ensures labels can be placed at exact pixel positions with equal margins.
+        """
+        import math
+        step = self.coord_label_step
+
         if self.hardcoded_extent is not None:
-            return self.hardcoded_extent
-        # Calculate from sensor coordinates with padding
-        lats = [s.lat for s in self.sensors]
-        lons = [s.lon for s in self.sensors]
+            raw = self.hardcoded_extent
+        else:
+            # Calculate from sensor coordinates with padding
+            lats = [s.lat for s in self.sensors]
+            lons = [s.lon for s in self.sensors]
+            raw = MapExtent(
+                lat_min=min(lats) - self.map_padding,
+                lat_max=max(lats) + self.map_padding,
+                lon_min=min(lons) - self.map_padding,
+                lon_max=max(lons) + self.map_padding
+            )
+
+        # Round extent to step grid: floor for min, ceil for max
+        # This ensures map edges are at nice round values
         return MapExtent(
-            lat_min=min(lats) - self.map_padding,
-            lat_max=max(lats) + self.map_padding,
-            lon_min=min(lons) - self.map_padding,
-            lon_max=max(lons) + self.map_padding
+            lat_min=math.floor(raw.lat_min / step) * step,
+            lat_max=math.ceil(raw.lat_max / step) * step,
+            lon_min=math.floor(raw.lon_min / step) * step,
+            lon_max=math.ceil(raw.lon_max / step) * step
         )
 
     def get_sensor_display_name(self, sensor_id: str) -> str:
@@ -228,7 +245,7 @@ def create_ecagp_config() -> SiteConfig:
         wind_speed_max=6.0,
         wind_station_name="HOU ASOS",
         wind_station_coords=(29.64, -95.28),  # Houston Hobby Airport
-        coord_label_step=0.02,
+        coord_label_step=0.01,  # Finer step for more labels
         # Hardcoded map extent (expanded view):
         # North: Jacinto City / I-10
         # South: Harrisburg / south of Buffalo Bayou
