@@ -73,8 +73,8 @@ class SiteConfig:
     base_map_file: str = "base_map.png"  # Base map filename
 
     # Circle sizing
-    circle_min: float = 110      # Minimum circle size in pixels
-    circle_max: float = 220      # Maximum circle size in pixels
+    circle_min: float = 176      # Minimum circle size in pixels (scaled for 2880x1920)
+    circle_max: float = 352      # Maximum circle size in pixels (scaled for 2880x1920)
 
     def get_map_extent(self) -> MapExtent:
         """Get map extent - use hardcoded if set, otherwise calculate from sensors."""
@@ -218,8 +218,8 @@ def create_ecagp_config() -> SiteConfig:
             "MOD-PM-01396": "MOD-PM-01396",
             "MOD-PM-01395": "MOD-PM-01395",
         },
-        circle_min=70,   # Smaller circles since sensors are close together
-        circle_max=140,
+        circle_min=112,   # Smaller circles since sensors are close together (scaled for 2880x1920)
+        circle_max=224,
         wind_speed_max=6.0,
         coord_label_step=0.02,
         # Hardcoded map extent (expanded view):

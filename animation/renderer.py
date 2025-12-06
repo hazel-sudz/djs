@@ -60,10 +60,10 @@ import numpy as np
 class Renderer:
     """GPU-accelerated frame renderer with wind vectors and multi-site support."""
 
-    HEADER_HEIGHT = 90
-    FOOTER_HEIGHT = 40
-    LEFT_MARGIN = 55
-    RIGHT_MARGIN = 180
+    HEADER_HEIGHT = 144
+    FOOTER_HEIGHT = 64
+    LEFT_MARGIN = 88
+    RIGHT_MARGIN = 288
 
     # Plasma colormap
     PLASMA_COLORS = [
@@ -227,9 +227,9 @@ class Renderer:
         # Include site name in title
         title_text = f"{self.site_config.display_name} — {self.pollution_type.display_name} — {self.pollution_type.unit}"
         self.draw_label(ctx, title_text, self.width / 2, title_y,
-                        font_size=20, bold=True, anchor="center")
+                        font_size=32, bold=True, anchor="center")
         self.draw_label(ctx, f"{date_label}  •  {time_label}", self.width / 2, title_y - 28,
-                        font_size=16, bold=False, anchor="center")
+                        font_size=26, bold=False, anchor="center")
 
     def draw_legend(self, ctx):
         """Draw color scale legend, centered in the right margin."""
@@ -271,13 +271,13 @@ class Renderer:
                 text = f"{val/1000:.0f}K"
             else:
                 text = f"{val:.0f}"
-            self.draw_label(ctx, text, legend_x + bar_width + 15, y_pos, font_size=14.5, bold=False, anchor="left")
+            self.draw_label(ctx, text, legend_x + bar_width + 24, y_pos, font_size=23, bold=False, anchor="left")
 
         # Title
-        self.draw_label(ctx, "Concentration", legend_x + bar_width / 2, legend_y + bar_height + 45,
-                        font_size=16, bold=True, anchor="center")
-        self.draw_label(ctx, f"({self.pollution_type.unit})", legend_x + bar_width / 2, legend_y + bar_height + 22,
-                        font_size=14.5, bold=False, anchor="center")
+        self.draw_label(ctx, "Concentration", legend_x + bar_width / 2, legend_y + bar_height + 72,
+                        font_size=26, bold=True, anchor="center")
+        self.draw_label(ctx, f"({self.pollution_type.unit})", legend_x + bar_width / 2, legend_y + bar_height + 35,
+                        font_size=23, bold=False, anchor="center")
 
     def draw_region_overlays(self, ctx):
         """Draw region outlines and labels (Galena Park boundary, Ship Channel label, etc.)."""
@@ -342,7 +342,7 @@ class Renderer:
         # Draw Galena Park boundary as solid line
         CGContextSaveGState(ctx)
         CGContextSetStrokeColorWithColor(ctx, self.create_color(0.8, 0.2, 0.3, 0.8))
-        CGContextSetLineWidth(ctx, 2.5)
+        CGContextSetLineWidth(ctx, 4)
 
         CGContextBeginPath(ctx)
         first = True
@@ -360,7 +360,7 @@ class Renderer:
         # Galena Park label - positioned above the outline
         gp_label_pos = self.geo_to_pixel(-95.230, 29.763)
         self.draw_label(ctx, "Galena Park", gp_label_pos[0], gp_label_pos[1],
-                       font_size=18, bold=True, bg_color=self.create_color(1, 1, 1, 0.85))
+                       font_size=29, bold=True, bg_color=self.create_color(1, 1, 1, 0.85))
 
         # Buffalo Bayou / Houston Ship Channel path - exact coordinates from OSM
         ship_channel_path = [
@@ -392,7 +392,7 @@ class Renderer:
         # Draw ship channel path as solid blue line
         CGContextSaveGState(ctx)
         CGContextSetStrokeColorWithColor(ctx, self.create_color(0.2, 0.5, 0.9, 0.7))
-        CGContextSetLineWidth(ctx, 2.5)
+        CGContextSetLineWidth(ctx, 4)
 
         CGContextBeginPath(ctx)
         first = True
@@ -409,7 +409,7 @@ class Renderer:
         # Houston Ship Channel label - on the waterway
         ship_channel_pos = self.geo_to_pixel(-95.185, 29.748)
         self.draw_label(ctx, "Houston Ship Channel", ship_channel_pos[0], ship_channel_pos[1],
-                       font_size=14, bold=True, bg_color=self.create_color(0.85, 0.95, 1.0, 0.9))
+                       font_size=22, bold=True, bg_color=self.create_color(0.85, 0.95, 1.0, 0.9))
 
         # Refineries and chemical plants near Galena Park - from OpenStreetMap
         refineries = [
@@ -435,20 +435,20 @@ class Renderer:
 
             px, py = self.geo_to_pixel(lon, lat)
 
-            # Draw factory/refinery symbol (small smokestack icon)
+            # Draw factory/refinery symbol (smokestack icon) - scaled for 2880x1920
             # Base rectangle
             CGContextSetFillColorWithColor(ctx, self.create_color(0.3, 0.3, 0.3, 0.9))
-            CGContextFillRect(ctx, CGRectMake(px - 8, py - 6, 16, 12))
+            CGContextFillRect(ctx, CGRectMake(px - 13, py - 10, 26, 20))
             # Smokestack
-            CGContextFillRect(ctx, CGRectMake(px - 3, py + 6, 6, 10))
+            CGContextFillRect(ctx, CGRectMake(px - 5, py + 10, 10, 16))
             # Smoke puff (circle)
             CGContextSetFillColorWithColor(ctx, self.create_color(0.5, 0.5, 0.5, 0.7))
-            CGContextAddEllipseInRect(ctx, CGRectMake(px - 5, py + 14, 10, 8))
+            CGContextAddEllipseInRect(ctx, CGRectMake(px - 8, py + 24, 16, 13))
             CGContextFillPath(ctx)
 
             # Label
-            self.draw_label(ctx, name, px, py - 18,
-                           font_size=11, bold=True, bg_color=self.create_color(1, 0.95, 0.85, 0.9))
+            self.draw_label(ctx, name, px, py - 30,
+                           font_size=18, bold=True, bg_color=self.create_color(1, 0.95, 0.85, 0.9))
 
         # Restore state to remove clipping
         CGContextRestoreGState(ctx)
@@ -465,8 +465,8 @@ class Renderer:
         lon = lon_start + step
         while lon < lon_end - step / 2:  # Stop before the last label
             p1 = self.geo_to_pixel(lon, self.map_extent.lat_min)
-            self.draw_label(ctx, f"{lon:.2f}", p1[0], p1[1] - 12,
-                           font_size=14.5, bold=True, bg_color=self.create_color(1, 1, 1, 0.9))
+            self.draw_label(ctx, f"{lon:.2f}", p1[0], p1[1] - 19,
+                           font_size=23, bold=True, bg_color=self.create_color(1, 1, 1, 0.9))
             lon += step
 
         # Draw latitude labels (at left edge, outside the map like longitude labels are below)
@@ -478,8 +478,8 @@ class Renderer:
             p1 = self.geo_to_pixel(self.map_extent.lon_min, lat)
             # Position label to the left of map edge (like lon labels are below map edge)
             # Right-align so the label ends at the map edge
-            self.draw_label(ctx, f"{lat:.2f}", p1[0] - 5, p1[1],
-                           font_size=14.5, bold=True, bg_color=self.create_color(1, 1, 1, 0.9),
+            self.draw_label(ctx, f"{lat:.2f}", p1[0] - 8, p1[1],
+                           font_size=23, bold=True, bg_color=self.create_color(1, 1, 1, 0.9),
                            anchor="right")
             lat += lat_step
 
@@ -541,7 +541,7 @@ class Renderer:
         # === Clean white border ===
         border_color = self.create_color(1, 1, 1, 0.9)
         CGContextSetStrokeColorWithColor(ctx, border_color)
-        CGContextSetLineWidth(ctx, 2)
+        CGContextSetLineWidth(ctx, 3)
         CGContextSetLineJoin(ctx, kCGLineJoinRound)
         CGContextBeginPath(ctx)
         CGContextMoveToPoint(ctx, base1_x, base1_y)
@@ -576,13 +576,13 @@ class Renderer:
         center_y = self.map_y + self.map_height / 2
 
         # Draw background circle
-        bg_radius = 45
+        bg_radius = 72
         CGContextSetFillColorWithColor(ctx, self.create_color(1, 1, 1, 0.85))
         CGContextAddEllipseInRect(ctx, CGRectMake(center_x - bg_radius, center_y - bg_radius,
                                                    bg_radius * 2, bg_radius * 2))
         CGContextFillPath(ctx)
         CGContextSetStrokeColorWithColor(ctx, self.create_color(0.3, 0.3, 0.3, 0.8))
-        CGContextSetLineWidth(ctx, 2)
+        CGContextSetLineWidth(ctx, 3)
         CGContextAddEllipseInRect(ctx, CGRectMake(center_x - bg_radius, center_y - bg_radius,
                                                    bg_radius * 2, bg_radius * 2))
         CGContextStrokePath(ctx)
@@ -596,15 +596,15 @@ class Renderer:
             speed_label = "Calm"
         else:
             speed_label = f"{wind_speed:.1f} m/s"
-        self.draw_label(ctx, speed_label, center_x, center_y - 5,
-                       font_size=14.5, bold=True, bg_color=self.create_color(1, 1, 1, 0.9))
+        self.draw_label(ctx, speed_label, center_x, center_y - 8,
+                       font_size=23, bold=True, bg_color=self.create_color(1, 1, 1, 0.9))
 
         # Label above circle
-        self.draw_label(ctx, "Wind Speed", center_x, center_y + bg_radius + 20,
-                       font_size=14, bold=True, bg_color=self.create_color(1, 1, 1, 0.85))
+        self.draw_label(ctx, "Wind Speed", center_x, center_y + bg_radius + 32,
+                       font_size=22, bold=True, bg_color=self.create_color(1, 1, 1, 0.85))
         # Station info below circle
-        self.draw_label(ctx, "HOU ASOS (29.64, -95.28)", center_x, center_y - bg_radius - 18,
-                       font_size=10, bold=False, bg_color=self.create_color(1, 1, 1, 0.8))
+        self.draw_label(ctx, "HOU ASOS (29.64, -95.28)", center_x, center_y - bg_radius - 29,
+                       font_size=16, bold=False, bg_color=self.create_color(1, 1, 1, 0.8))
 
     def render_frame(self, frame) -> bytes:
         """Render a single frame."""
@@ -663,7 +663,7 @@ class Renderer:
 
             # Circle border
             CGContextSetStrokeColorWithColor(ctx, self.create_color(*color, min(1.0, alpha + 0.1)))
-            CGContextSetLineWidth(ctx, 2.5)
+            CGContextSetLineWidth(ctx, 4)
             CGContextAddEllipseInRect(ctx, CGRectMake(pos[0] - size/2, pos[1] - size/2, size, size))
             CGContextStrokePath(ctx)
 
@@ -683,18 +683,18 @@ class Renderer:
             for j, (other_pos, other_sensor) in enumerate(sensor_positions):
                 if i != j:
                     dist = math.sqrt((pos[0] - other_pos[0])**2 + (pos[1] - other_pos[1])**2)
-                    if dist < 120:  # Sensors are close
+                    if dist < 192:  # Sensors are close
                         # Offset labels horizontally based on relative position
                         if pos[0] < other_pos[0]:
-                            x_offset = -60  # This sensor is to the left, offset label left
+                            x_offset = -96  # This sensor is to the left, offset label left
                         else:
-                            x_offset = 60   # This sensor is to the right, offset label right
+                            x_offset = 96   # This sensor is to the right, offset label right
 
             # Sensor name - offset if needed
             sensor_name = self.site_config.get_sensor_display_name(sensor_id)
             label_x = pos[0] + x_offset
-            self.draw_label(ctx, sensor_name, label_x, pos[1] - size/2 - 18,
-                           font_size=14.5, bold=True, bg_color=self.create_color(1, 1, 1, 0.9))
+            self.draw_label(ctx, sensor_name, label_x, pos[1] - size/2 - 29,
+                           font_size=23, bold=True, bg_color=self.create_color(1, 1, 1, 0.9))
 
             # Pollution value below sensor name (or "NA" if missing)
             if is_na:
@@ -705,8 +705,8 @@ class Renderer:
                     label = f"{pollution/1000:.1f}K {short_unit}"
                 else:
                     label = f"{pollution:.0f} {short_unit}"
-            self.draw_label(ctx, label, label_x, pos[1] - size/2 - 40,
-                           font_size=14.5, bold=True, bg_color=self.create_color(1, 1, 1, 0.85))
+            self.draw_label(ctx, label, label_x, pos[1] - size/2 - 64,
+                           font_size=23, bold=True, bg_color=self.create_color(1, 1, 1, 0.85))
 
         # Draw wind indicator in center (from weather station)
         self.draw_wind_indicator(ctx, frame.sensors)

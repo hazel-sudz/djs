@@ -151,7 +151,7 @@ def render_animation(site_config: SiteConfig, pollution_type: PollutionType,
     if not base_map_path.exists():
         print("\nCreating base map...")
         # Create at map dimensions (not full frame) to avoid aspect ratio distortion
-        create_base_map(map_extent, str(base_map_path), map_width, map_height, zoom=15)
+        create_base_map(map_extent, str(base_map_path), map_width, map_height, zoom=17)
     else:
         print(f"\nUsing existing base map: {base_map_path}")
 
@@ -284,8 +284,8 @@ def main():
     parser.add_argument("--data", default=None, help="Override data file path")
     parser.add_argument("--output", default="output", help="Output directory")
     parser.add_argument("--days", nargs="*", help="Specific days to render (YYYY-MM-DD)")
-    parser.add_argument("--width", type=int, default=1800, help="Frame width")
-    parser.add_argument("--height", type=int, default=1200, help="Frame height")
+    parser.add_argument("--width", type=int, default=2880, help="Frame width")
+    parser.add_argument("--height", type=int, default=1920, help="Frame height")
     parser.add_argument("--fps", type=float, default=32.0, help="Frames per second")
     parser.add_argument("--list-sites", action="store_true", help="List available sites and exit")
     args = parser.parse_args()
