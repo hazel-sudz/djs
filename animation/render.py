@@ -5,6 +5,9 @@ Multi-site air quality animation renderer.
 Supports multiple monitoring sites (East Boston, ECAGP, etc.) and
 multiple pollution types per site (UFP, PM1, PM2.5, PM10).
 
+By default, frames are deleted after each video is created to save disk space.
+Use --keep-frames to preserve them for debugging.
+
 Usage:
     # Render Eastie UFP (default)
     uv run python render.py
@@ -29,10 +32,14 @@ Usage:
 
     # Generate weekly videos (recommended for large datasets)
     uv run python render.py --site ecagp --all --weekly
+
+    # Keep frames after video creation (for debugging)
+    uv run python render.py --keep-frames
 """
 
 import argparse
 import time
+import shutil
 from pathlib import Path
 import subprocess
 import pandas as pd
@@ -120,11 +127,13 @@ def create_video(frame_dir: str, output_file: str, frame_rate: float = 2.0):
 
 
 def render_animation(site_config: SiteConfig, pollution_type: PollutionType,
-                     df: pd.DataFrame, dates: list, args, video_output_dir: Path = None) -> dict:
+                     df: pd.DataFrame, dates: list, args, video_output_dir: Path = None,
+                     keep_frames: bool = False) -> dict:
     """Render animation for a specific site and pollution type.
 
     Args:
         video_output_dir: Optional override for where to save the video
+        keep_frames: If False, delete frames after video creation to save disk space
 
     Returns:
         Dictionary with rendering statistics
@@ -210,6 +219,12 @@ def render_animation(site_config: SiteConfig, pollution_type: PollutionType,
 
     create_video(str(frames_dir), video_file, frame_rate=args.fps)
 
+    # Clean up frames to save disk space (unless --keep-frames was specified)
+    if not keep_frames and frames_dir.exists():
+        frame_count_deleted = len(list(frames_dir.glob("frame_*.png")))
+        shutil.rmtree(frames_dir)
+        print(f"  Cleaned up {frame_count_deleted} frames to save disk space")
+
     return {
         'total_frames': total_frames,
         'video_file': video_file,
@@ -266,7 +281,8 @@ def render_weekly(site_config: SiteConfig, pollution_types: list, df: pd.DataFra
 
             result = render_animation(
                 site_config, pollution_type, df, week_dates, args,
-                video_output_dir=week_dir
+                video_output_dir=week_dir,
+                keep_frames=getattr(args, 'keep_frames', False)
             )
             result['week'] = week_start
             result['pollution_type'] = pollution_type
@@ -292,6 +308,8 @@ def main():
     parser.add_argument("--width", type=int, default=2880, help="Frame width")
     parser.add_argument("--height", type=int, default=1920, help="Frame height")
     parser.add_argument("--fps", type=float, default=32.0, help="Frames per second")
+    parser.add_argument("--keep-frames", action="store_true",
+                        help="Keep frame PNGs after video creation (default: delete to save disk space)")
     parser.add_argument("--list-sites", action="store_true", help="List available sites and exit")
     parser.add_argument("--all-sites", action="store_true",
                         help="Render all sites (Eastie: single video, ECAGP: weekly videos for all pollution types)")
@@ -435,7 +453,10 @@ def render_site(args):
         # Original single-video mode
         all_results = []
         for pollution_type in pollution_types:
-            result = render_animation(site_config, pollution_type, df, dates, args)
+            result = render_animation(
+                site_config, pollution_type, df, dates, args,
+                keep_frames=getattr(args, 'keep_frames', False)
+            )
             result['pollution_type'] = pollution_type
             all_results.append(result)
 
